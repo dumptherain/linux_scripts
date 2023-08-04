@@ -1,28 +1,54 @@
 #!/bin/bash
 
-# Store the current directory
-start_dir=$(pwd)
+# Default values
+fps=24
+res="1920x1080"
 
-# create a temporary directory
-temp_dir=$(mktemp -d)
+# Parse command-line arguments
+while (( "$#" )); do
+  case "$1" in
+    -fps)
+      fps=$2
+      shift 2
+      ;;
+    -res)
+      res=$2
+      shift 2
+      ;;
+    --) # end argument parsing
+      shift
+      break
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Error: Unsupported flag $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
-# convert exr to png in parallel and store in temp dir
-ls *.exr | parallel -v 'convert {} -colorspace sRGB '$temp_dir'/{/.}.png'
+# Create a new temporary directory
+tmpdir=$(mktemp -d)
 
-# change to the temp directory
-cd $temp_dir
+# Copy .exr files to the temporary directory
+cp *.exr "$tmpdir"
 
-# create a sequence of symlinks to the png images
-ls *.png | cat -n | while read n f; do ln -s "$f" "$(printf "%04d.png" $n)"; done
+# Navigate to the temporary directory
+pushd "$tmpdir"
 
-# convert png to mp4
-ffmpeg -r 30 -f image2 -s 1920x1080 -i %04d.png -vcodec libx264 -crf 25  -pix_fmt yuv420p output.mp4
+# Convert .exr files to .jpg files, ignoring alpha channel
+ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.jpg'
 
-# change back to the original directory
-cd $start_dir
+# Generate a list of .jpg files with the 'file' keyword before each filename
+ls *_converted.jpg | sort -V | sed 's/^/file /' > files.txt
 
-# move the video to the original directory
-mv $temp_dir/output.mp4 ./
+# Stitch .jpg files into a video
+ffmpeg -f concat -safe 0 -i files.txt -c:v libx264 -pix_fmt yuv420p -r $fps -s $res output.mp4
 
-# remove the temporary directory
-rm -r $temp_dir
+# Navigate back to the original directory
+popd
+
+# Move the output video to the original directory
+mv "$tmpdir/output.mp4" .
+
+# Remove the temporary directory
+rm -r "$tmpdir"
