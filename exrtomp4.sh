@@ -27,7 +27,7 @@ while (( "$#" )); do
 done
 
 # Create a new temporary directory
-tmpdir=$(mktemp -d)
+tmpdir=$(mktemp -d -p "./")
 
 # Copy .exr files to the temporary directory
 cp *.exr "$tmpdir"
