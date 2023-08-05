@@ -10,7 +10,7 @@ This is a collection of bash scripts that speed up small everyday tasks for me w
 - OCIO environment variable set
 
 ### exrtomp4
-Takes an exr. sequence in ACEScg color space in the current directory and converts it into an .mp4 with sRGB color space. 
+Takes an .exr sequence in ACEScg color space in the current directory and converts it into an .mp4 with sRGB color space. 
 This command defaults to 24 fps at 1920x1080. 
 The following flags can be used atm: 
 -fps 
