@@ -6,6 +6,7 @@ This is a collection of bash scripts that speed up small everyday tasks for me w
 - ffmpeg
 - imagemagick
 - parallel (speeds up image conversion)
+- openimageio-tools
 - OCIO environment variable set
 
 ### exrtomp4
