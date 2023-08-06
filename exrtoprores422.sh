@@ -35,20 +35,20 @@ cp *.exr "$tmpdir"
 # Navigate to the temporary directory
 pushd "$tmpdir"
 
-# Convert .exr files to .jpg files, ignoring alpha channel
-ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.jpg'
+# Convert .exr files to .png files, ignoring alpha channel
+ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.png'
 
-# Generate a list of .jpg files with the 'file' keyword before each filename
-ls *_converted.jpg | sort -V | sed 's/^/file /' > files.txt
+# Generate a list of .png files with the 'file' keyword before each filename
+ls *_converted.png | sort -V | sed 's/^/file /' > files.txt
 
-# Stitch .jpg files into a video
+# Stitch .png files into a video
 ffmpeg -f concat -safe 0 -i files.txt -c:v prores_ks -profile:v 2 -pix_fmt yuv422p10le -r $fps -s $res output.mov
 
 # Navigate back to the original directory
 popd
 
 # Move the output video to the original directory
-mv "$tmpdir/output.mp4" .
+mv "$tmpdir/output.mov" .
 
 # Remove the temporary directory
 rm -r "$tmpdir"
