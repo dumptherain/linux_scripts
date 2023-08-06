@@ -35,13 +35,13 @@ cp *.exr "$tmpdir"
 # Navigate to the temporary directory
 pushd "$tmpdir"
 
-# Convert .exr files to .png files, ignoring alpha channel
-ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.png'
+# Convert .exr files to .exr files, ignoring alpha channel
+ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.exr'
 
-# Generate a list of .png files with the 'file' keyword before each filename
-ls *_converted.png | sort -V | sed 's/^/file /' > files.txt
+# Generate a list of .exr files with the 'file' keyword before each filename
+ls *_converted.exr | sort -V | sed 's/^/file /' > files.txt
 
-# Stitch .png files into a video
+# Stitch .exr files into a video
 ffmpeg -f concat -safe 0 -i files.txt -c:v prores_ks -profile:v 2 -pix_fmt yuv422p10le -r $fps -s $res output.mov
 
 # Navigate back to the original directory
