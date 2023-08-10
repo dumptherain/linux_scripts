@@ -1,6 +1,7 @@
 # Linux Scripts
 A collection of bash scripts that speed up small everyday tasks for me working on CG/VFX jobs.
 
+- [aration](#aratio)
 - [exrtomp4](#exrtomp4)
 - [mergeproes](#mergeprores)
 - [mp4](#mp4)
@@ -18,6 +19,13 @@ A collection of bash scripts that speed up small everyday tasks for me working o
 For Debian-based Linux distributions, you can install these using the package manager apt:
 `sudo apt-get install ffmpeg imagemagick parallel openimageio-tools`
 For the OCIO environment variable, please refer to the documentation on how to [set environment variables in Linux](https://www.serverlab.ca/tutorials/linux/administration-linux/how-to-set-environment-variables-in-linux/).
+
+### aratio
+The command followed by the input video(s) to target will result in the most commonly to be delivered aspect ratios for online video media. The highest possible resolution from the given input video will be used.
+- 1:1
+- 4:5
+- 16:9
+- 9:16
 
 ### exrtomp4
 Takes an .exr sequence in ACEScg color space in the current directory and converts it into an .mp4 with sRGB color space. This command defaults to 24 fps at the resolution of the images provided. The following flags can be used at the moment: 
