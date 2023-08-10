@@ -21,7 +21,7 @@ For Debian-based Linux distributions, you can install these using the package ma
 For the OCIO environment variable, please refer to the documentation on how to [set environment variables in Linux](https://www.serverlab.ca/tutorials/linux/administration-linux/how-to-set-environment-variables-in-linux/).
 
 ### aratio
-The command followed by the input video(s) to target will result in the most commonly to be delivered aspect ratios for online video media. The highest possible resolution from the given input video will be used.
+This command followed by the input video(s) to target will result in the most commonly to be delivered aspect ratios for online video media. The highest possible resolution from the given input video will be used.
 - 1:1
 - 4:5
 - 16:9
