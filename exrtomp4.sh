@@ -2,7 +2,7 @@
 
 # Default values
 fps=24
-res="1920x1080"
+res=""
 
 # Parse command-line arguments
 while (( "$#" )); do
@@ -34,6 +34,12 @@ cp *.exr "$tmpdir"
 
 # Navigate to the temporary directory
 pushd "$tmpdir"
+
+# Get resolution of the first .exr file if res is not specified
+if [ -z "$res" ]; then
+  first_exr=$(ls *.exr | sort -V | head -n 1)
+  res=$(oiiotool --info $first_exr | grep "Resolution" | awk '{print $2}')
+fi
 
 # Convert .exr files to .jpg files, ignoring alpha channel
 ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.jpg'
