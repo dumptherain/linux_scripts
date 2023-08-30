@@ -5,6 +5,7 @@ A collection of bash scripts that speed up small everyday tasks for me working o
 - [exrtomp4](#exrtomp4)
 - [mergeproes](#mergeprores)
 - [mp4](#mp4)
+- [smp4](#smp4)
 - [prores422hq](#prores422hq)
 - [prores422](#prores422)
 
@@ -39,6 +40,9 @@ This is meant as a workaround for the nuke indie resolution limit. It takes two 
 
 ### mp4
 Takes any video files and converts them into compressed .mp4 files. The output is then moved into a folder named `mp4`.
+
+### smp4
+Takes any video files and converts them into compressed .mp4 files with a _small suffix in the same folder as the original.
 
 ### proress422hq
 Takes any video files and converts them into .prores422hq files. The output is then moved into a folder named `prores422hq`.
