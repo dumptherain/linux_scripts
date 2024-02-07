@@ -8,6 +8,11 @@ A collection of bash scripts that speed up small everyday tasks for me working o
 - [smp4](#smp4)
 - [prores422hq](#prores422hq)
 - [prores422](#prores422)
+- [exrarchive](#exrarchive)
+- [grid3](#grid3)
+- [monitor](#monitor)
+
+
 
 ## Requirements
 - [ffmpeg](https://www.ffmpeg.org/)
@@ -50,3 +55,11 @@ Takes any video files and converts them into .prores422hq files. The output is t
 ### proress422
 Takes any video files and converts them into .prores422 files. The output is then moved into a folder named `prores422hq`.
 
+### exrarchive
+Looks through all subfolders to find exr sequences and convert them from ACEScg into an sRGB .mp4 file. You will be shown a tree view off all subfolder. You can write the subfolders that should be ignored. When the script is done you can choose if you want to add all mp4 files into a new folder. If so just type in the name and it will create that folder and move the mp4's into it.
+
+### grid3
+This script takes all mp4 files in a current direcotory and makes 3x3 grids.
+
+### monitor
+this script opens up a tmux session with a split view of nvtop and btm to monitor your system during rendering.
