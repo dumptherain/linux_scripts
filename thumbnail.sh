@@ -3,7 +3,6 @@
 # Function to extract frames from a video file
 extract_frames() {
     local file=$1
-    shift
     local frames=("$@")
     local filename=$(basename "$file")
     local filename_without_ext="${filename%.*}"
@@ -19,13 +18,14 @@ extract_frames() {
     done
 }
 
-# Array to hold frame numbers
-declare -a frames
+# Initialize the frames array with 0 to extract the first frame by default
+declare -a frames=(0)
 
 # Process command line arguments
 while [ $# -gt 0 ]; do
     case "$1" in
         -frame)
+            frames=() # Reset frames array to fill with new values
             while [[ "$2" =~ ^[0-9]+$ ]]; do
                 frames+=("$2")
                 shift
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
             # Check if file exists and is a video
             if [ -f "$1" ] && [[ $(file --mime-type -b "$1") =~ ^video/ ]]; then
                 extract_frames "$1" "${frames[@]}"
-                frames=() # Reset frames array for the next file
+                frames=(0) # Reset frames array to default value
             else
                 echo "File $1 not found or is not a video."
             fi
@@ -44,8 +44,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# If no files were specified, process all video files in the directory
-if [ ${#frames[@]} -eq 0 ]; then
+# If no specific video file was provided, process all video files in the directory
+if [ ${#frames[@]} -eq 1 ] && [ ${frames[0]} -eq 0 ]; then
     for file in *; do
         if [[ $(file --mime-type -b "$file") =~ ^video/ ]]; then
             extract_frames "$file" "${frames[@]}"
@@ -53,4 +53,4 @@ if [ ${#frames[@]} -eq 0 ]; then
     done
 fi
 
-echo "Thumbnail extraction completed."
+echo "Frame extraction completed."

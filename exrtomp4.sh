@@ -1,8 +1,18 @@
 #!/bin/bash
 
+echo "Starting script..."
+
 # Get the resolution of the first .exr file in the directory
 first_exr=$(ls *.exr | sort -V | head -n1)
+echo "First EXR file: $first_exr"
+
+if [ -z "$first_exr" ]; then
+    echo "No EXR files found. Exiting."
+    exit 1
+fi
+
 res=$(identify -format "%wx%h" "$first_exr")
+echo "Resolution: $res"
 
 # Adjust resolution to be divisible by 2
 width=$(echo $res | cut -d 'x' -f 1)
@@ -17,6 +27,7 @@ if ((height % 2 != 0)); then
 fi
 
 res="${width}x${height}"
+echo "Adjusted resolution: $res"
 
 # Default values
 fps=24
@@ -43,32 +54,35 @@ while (( "$#" )); do
   esac
 done
 
-# Create a new temporary directory
+echo "Creating temporary directory..."
 tmpdir=$(mktemp -d -p "./")
+echo "Temporary directory created at $tmpdir"
 
-# Copy .exr files to the temporary directory
-cp *.exr "$tmpdir"
+echo "Copying .exr files to temporary directory..."
+cp *.exr "$tmpdir" || { echo "Copying .exr files failed"; exit 1; }
 
-# Navigate to the temporary directory
-pushd "$tmpdir"
+echo "Changing into temporary directory $tmpdir"
+pushd "$tmpdir" || { echo "Changing directory failed"; exit 1; }
 
-# Convert .exr files to .jpg files, ignoring alpha channel
+echo "Converting .exr files to .jpg..."
 ls *.exr | parallel -v 'oiiotool --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" {} -o {/.}_converted.jpg'
 
-# Generate a list of .jpg files with the 'file' keyword before each filename
+echo "Generating list of .jpg files..."
 ls *_converted.jpg | sort -V | sed 's/^/file /' > files.txt
 
-# Use the base name of the first EXR file for the MP4 file name, removing the file extension
 output_filename=$(basename "$first_exr" .exr).mp4
+echo "Output filename will be $output_filename"
 
-# Stitch .jpg files into a video
-ffmpeg -f concat -safe 0 -i files.txt -c:v libx264 -pix_fmt yuv420p -r $fps -s $res "$output_filename"
+echo "Stitching .jpg files into video $output_filename"
+ffmpeg -f concat -safe 0 -i files.txt -c:v libx264 -pix_fmt yuv420p -r $fps -s $res "$output_filename" || { echo "FFmpeg processing failed"; exit 1; }
 
-# Navigate back to the original directory
+echo "Returning to the original directory"
 popd
 
-# Move the output video to the original directory
-mv "$tmpdir/$output_filename" .
+echo "Moving $output_filename to the original directory"
+mv "$tmpdir/$output_filename" . || { echo "Moving output file failed"; exit 1; }
 
-# Remove the temporary directory
+echo "Removing temporary directory $tmpdir"
 rm -r "$tmpdir"
+
+echo "Script completed successfully."

@@ -1,75 +1,52 @@
 #!/bin/bash
 
-# The current directory is used as the search directory
-search_dir="."
-
-# The directory where the MP4 files will be copied to, also the current directory in this case
-output_dir=$(pwd)
-
-# Function to process each found directory
+# Function to process a directory recursively
 process_directory() {
-    local dir=$1
+    local root_dir="$1"
+    local dir="$2"
+    local original_dir=$(pwd)
     echo "Processing directory: $dir"
 
-    # Change into the directory
-    pushd "$dir" > /dev/null
+    cd "$dir" || return 1
+    echo "Changing into directory $dir"
 
-    # Find the first EXR file to base the MP4 name on
-    first_exr=$(ls *.exr | sort -V | head -n1)
-    if [ -z "$first_exr" ]; then
+    # Check if there are any .exr files in the directory
+    if ! ls *.exr >/dev/null 2>&1; then
         echo "No EXR files found in $dir, skipping..."
-        popd > /dev/null
+        cd "$original_dir" || return 1
         return
     fi
 
-    # Remove the file extension to get the base name
-    base_name="${first_exr%.*}"
-
-    # Execute the exrtomp4.sh script
-    exrtomp4.sh
-
-    # Check if the MP4 was generated
-    if [ -f "./output.mp4" ]; then
-        # Rename the MP4 file to match the first EXR file's base name
-        mv "./output.mp4" "$output_dir/${base_name}.mp4"
+    echo "Executing exrtomp4.sh to convert EXR to MP4"
+    if exrtomp4.sh; then
+        echo "Conversion successful in $dir"
+        # Move the .mp4 files to the root directory
+        for mp4_file in *.mp4; do
+            mv "$mp4_file" "$root_dir"
+            echo "Moving $mp4_file to the original directory"
+        done
     else
-        echo "Conversion failed or no MP4 file was generated in $dir"
+        echo "Conversion failed in $dir"
     fi
 
-    # Return to the original directory
-    popd > /dev/null
+    # Recursively process subdirectories
+    local subdirs=($(find . -mindepth 1 -maxdepth 1 -type d))
+    for subdir in "${subdirs[@]}"; do
+        process_directory "$root_dir" "$subdir"
+    done
+
+    cd "$original_dir" || return 1
+    echo "Returning to the original directory"
 }
 
-# Export the function so it can be used by find -exec
-export -f process_directory
-export output_dir
+# Main script starts here
 
-# Use tree -d to list directories
-echo "List of directories:"
-tree -d
+# Get the list of directories to process
+directories=($(find . -mindepth 1 -maxdepth 1 -type d))
 
-# Read user input for folders to exclude
-read -p "Enter folders to exclude (space-separated): " -a exclude_folders
-
-# Create a find command to exclude specified folders
-exclude_cmd=""
-for folder in "${exclude_folders[@]}"; do
-    exclude_cmd="$exclude_cmd -name $folder -prune -o"
+# Process each directory
+for dir in "${directories[@]}"; do
+    process_directory "$(pwd)" "$dir"
 done
-
-# Find directories containing EXR files and process them, excluding user-specified folders
-find "$search_dir" \( $exclude_cmd -type f -name "*.exr" -printf '%h\n' \) | sort -u | xargs -I {} bash -c 'process_directory "$@"' _ {}
-
-# Prompt the user to create a new directory and move files
-read -p "Do you want to move the processed files into a new directory? Enter the folder name (or press Enter to skip): " move_folder_name
-
-if [ -n "$move_folder_name" ]; then
-    # Create the new directory
-    mkdir -p "$move_folder_name"
-
-    # Move the processed files into the new directory
-    mv *.mp4 "$move_folder_name/"
-    echo "Processed files moved to $move_folder_name/"
-fi
 
 echo "Processing complete."
