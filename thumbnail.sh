@@ -3,6 +3,7 @@
 # Function to extract frames from a video file
 extract_frames() {
     local file=$1
+    shift
     local frames=("$@")
     local filename=$(basename "$file")
     local filename_without_ext="${filename%.*}"
@@ -18,34 +19,37 @@ extract_frames() {
     done
 }
 
-# Initialize the frames array with 0 to extract the first frame by default
-declare -a frames=(0)
+# Initialize variables
+declare -a frames=(0)  # Default to extracting the first frame
+video_file=""
 
 # Process command line arguments
 while [ $# -gt 0 ]; do
     case "$1" in
-        -frame)
-            frames=() # Reset frames array to fill with new values
-            while [[ "$2" =~ ^[0-9]+$ ]]; do
-                frames+=("$2")
+        -frames)
+            shift  # Move past the '-frames' argument
+            frames=()  # Reset frames array to fill with new values
+            while [[ "$1" =~ ^[0-9]+$ ]]; do
+                frames+=("$1")
                 shift
             done
             ;;
         *)
-            # Check if file exists and is a video
             if [ -f "$1" ] && [[ $(file --mime-type -b "$1") =~ ^video/ ]]; then
-                extract_frames "$1" "${frames[@]}"
-                frames=(0) # Reset frames array to default value
+                video_file="$1"
             else
-                echo "File $1 not found or is not a video."
+                echo "Warning: File $1 not found or is not a video."
             fi
             shift
             ;;
     esac
 done
 
-# If no specific video file was provided, process all video files in the directory
-if [ ${#frames[@]} -eq 1 ] && [ ${frames[0]} -eq 0 ]; then
+# Extract frames from the specified video file or all video files in the directory
+if [ -n "$video_file" ]; then
+    extract_frames "$video_file" "${frames[@]}"
+else
+    echo "No specific video file provided, extracting from all videos in the current directory."
     for file in *; do
         if [[ $(file --mime-type -b "$file") =~ ^video/ ]]; then
             extract_frames "$file" "${frames[@]}"
