@@ -1,0 +1,8 @@
+Detecting language using up to the first 30 seconds. Use `--language` to specify the language
+Detected language: English
+[00:00.000 --> 00:10.000]  This is an audio test. I'm testing the audio, so we're going to try to transcribe this text.
+[00:10.000 --> 00:15.000]  I'm going to read a little bit. Text and voice processing take place entirely offline,
+[00:15.000 --> 00:19.000]  locally on your computer, without using a network connection. Your privacy is always respected.
+[00:19.000 --> 00:24.000]  No data is sent to the internet. It shows the applications flat hub listing.
+[00:24.000 --> 00:29.000]  Those with a supported GPU will want to turn GPU acceleration on as well,
+[00:29.000 --> 00:36.000]  as will hugely improve processing times, which are on the slow side of only using CPU processing.
