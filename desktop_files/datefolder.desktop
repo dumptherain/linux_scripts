@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+MimeType=inode/directory;
+Actions=createDateFolder;
+
+[Desktop Action createDateFolder]
+Name=Create Folder with Current Date
+Exec=/home/pscale/linux_scripts/date.sh
+Icon=folder-new

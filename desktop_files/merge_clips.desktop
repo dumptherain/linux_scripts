@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=video/x-msvideo;video/quicktime;video/mp4;
+Actions=mergeClips
+X-KDE-Priority=TopLevel
+
+[Desktop Action mergeClips]
+Name=Merge Clips
+Exec=mergeprores2.sh %F
+Icon=video-x-generic

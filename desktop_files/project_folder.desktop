@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+MimeType=inode/directory;
+Actions=createProjectFolders;
+
+[Desktop Action createProjectFolders]
+Name=Create Project Folders
+Icon=folder-new
+Exec=/home/pscale/linux_scripts/project_folder.sh %f

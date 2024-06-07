@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=video/x-msvideo;video/quicktime;video/mp4;video/x-matroska;video/x-flv;video/mpeg;video/x-ms-wmv;
+Actions=convertToLowerQualityMp4
+X-KDE-Priority=TopLevel
+
+[Desktop Action convertToLowerQualityMp4]
+Name=Convert to Lower Quality MP4
+Exec=mp4.sh %F
+Icon=video-x-generic

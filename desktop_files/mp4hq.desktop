@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=video/x-msvideo;video/quicktime;video/mp4;video/x-matroska;video/x-flv;video/mpeg;video/x-ms-wmv;
+Actions=convertToMp4
+X-KDE-Priority=TopLevel
+
+[Desktop Action convertToMp4]
+Name=Convert to MP4
+Exec=mp4hq.sh %F
+Icon=video-x-generic
