@@ -10,11 +10,11 @@ declare -A right_files
 
 # Separate left and right files into respective associative arrays
 for file in "$@"; do
-  if [[ "$file" == *_left.mov ]]; then
-    base_name="${file%_left.mov}"
+  if [[ "$file" == *_left.mov || "$file" == *_l.mov ]]; then
+    base_name="${file%_*}"
     left_files["$base_name"]="$file"
-  elif [[ "$file" == *_right.mov ]]; then
-    base_name="${file%_right.mov}"
+  elif [[ "$file" == *_right.mov || "$file" == *_r.mov ]]; then
+    base_name="${file%_*}"
     right_files["$base_name"]="$file"
   else
     kdialog --error "Selected files do not match expected naming convention."

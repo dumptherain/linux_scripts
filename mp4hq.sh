@@ -9,7 +9,7 @@ if [ "$#" -gt 0 ]; then
     for i in "$@"; do
         ffmpeg -i "$i" \
         -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-        -c:v libx264 -pix_fmt yuv420p \
+        -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p \
         "./mp4/$(basename "${i%.*}").mp4"
     done
 else
@@ -17,7 +17,7 @@ else
     for i in *.*; do
         ffmpeg -i "$i" \
         -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-        -c:v libx264 -pix_fmt yuv420p \
+        -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p \
         "./mp4/$(basename "${i%.*}").mp4"
     done
 fi
