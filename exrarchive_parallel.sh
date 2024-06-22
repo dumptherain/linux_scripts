@@ -44,12 +44,11 @@ root_dir=$(pwd)
 # Get the list of directories to process recursively, excluding the current directory (.)
 directories=($(find "$root_dir" -type d | grep -v "^$root_dir\$"))
 
-# Process each directory in parallel
-for dir in "${directories[@]}"; do
-    process_directory "$root_dir" "$dir" &
-done
+# Export the function and variables for parallel execution
+export -f process_directory
+export root_dir
 
-# Wait for all background processes to finish
-wait
+# Process each directory in parallel using GNU Parallel
+parallel process_directory "$root_dir" ::: "${directories[@]}"
 
 echo "Processing complete."
