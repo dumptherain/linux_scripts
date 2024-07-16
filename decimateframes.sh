@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Function to process video and extract every nth frame
-process_video_nth_frame() {
-    local video=$1
+# Function to process images and keep every nth frame
+process_images_nth_frame() {
+    local img_dir=$1
     local target_frames=$2
-    local base_name=$(basename "${video%.*}")
+    local base_name=$(basename "$img_dir")
 
-    # Get the total number of frames in the video
-    total_frames=$(ffmpeg -i "$video" -map 0:v:0 -c copy -f null - 2>&1 | grep 'frame=' | awk '{print $2}')
+    # Get the total number of image files in the directory
+    total_frames=$(ls "$img_dir" | grep -E "\.(png|jpg|jpeg|bmp|tiff)$" | wc -l)
 
     # Calculate the nth frame interval
     if [ "$total_frames" -le "$target_frames" ]; then
@@ -16,32 +16,42 @@ process_video_nth_frame() {
         nth_frame=$((total_frames / target_frames))
     fi
 
-    # Directory name for PNGs
-    local dir_name="${video%.*}_every_nth_frame"
+    # Directory name for the output images
+    local dir_name="${img_dir%/}_every_nth_frame"
 
-    # Create directory for PNGs if it doesn't exist
+    # Create directory for output images if it doesn't exist
     mkdir -p "$dir_name"
 
-    # Extract every nth frame without changing resolution
-    ffmpeg -i "$video" -vf "select=not(mod(n\,$nth_frame))" -vsync vfr "${dir_name}/${base_name}_%04d.png"
+    # Counter for frame extraction
+    frame_counter=0
 
-    echo "Conversion completed: ${dir_name}/${base_name}_%04d.png with every $nth_frame frames"
+    # Process and copy every nth image
+    for img in "$img_dir"/*.{png,jpg,jpeg,bmp,tiff}; do
+        if [ -e "$img" ]; then
+            if (( frame_counter % nth_frame == 0 )); then
+                cp "$img" "$dir_name/"
+            fi
+            ((frame_counter++))
+        fi
+    done
+
+    echo "Conversion completed: $dir_name with every $nth_frame frames"
 }
 
-# Prompt user for video file
-read -p "Enter the path to the video file: " video
-if [ ! -f "$video" ]; then
-    echo "File not found!"
+# Prompt user for the directory containing images
+read -p "Enter the path to the directory containing image files: " img_dir
+if [ ! -d "$img_dir" ]; then
+    echo "Directory not found!"
     exit 1
 fi
 
 # Prompt user for target amount of frames
-read -p "Enter the target amount of frames to extract: " target_frames
+read -p "Enter the target amount of frames to keep: " target_frames
 if ! [[ "$target_frames" =~ ^[0-9]+$ ]]; then
     echo "Invalid number of frames!"
     exit 1
 fi
 
-# Call process_video_nth_frame function with the provided video and target frames
-process_video_nth_frame "$video" "$target_frames"
+# Call process_images_nth_frame function with the provided directory and target frames
+process_images_nth_frame "$img_dir" "$target_frames"
 
