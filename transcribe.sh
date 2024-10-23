@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Initialize variables
-LANGUAGE_ARG=""
+# Initialize variables with default language set to English
+LANGUAGE_ARG="--language English"
 AUDIO_FILE=""
 
 # Function to get the full path of the directory of a file
@@ -67,6 +67,10 @@ whisper "$AUDIO_FILE" $LANGUAGE_ARG > "$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav)
 OUTPUT_FILE="$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav).txt"
 if [ -f "$OUTPUT_FILE" ]; then
     echo "Transcription complete: $OUTPUT_FILE"
+
+    # Run the formattxt.sh script with the output file as argument
+    echo "Running formattxt.sh to format the transcription..."
+    formattxt.sh "$OUTPUT_FILE"
 else
     echo "Failed to create output file."
 fi
@@ -74,4 +78,3 @@ fi
 # Deactivate the Python environment
 echo "Deactivating Python environment..."
 deactivate
-
