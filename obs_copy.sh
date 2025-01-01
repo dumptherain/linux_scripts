@@ -3,33 +3,22 @@
 source_dir="/home/mini/Videos/OBS"
 dest_dir="/mnt/a/youtube/recordings"
 
-# Function to copy files recursively
-copy_files() {
-  local src="$1"
-  local dst="$2"
+# Get today's date in YYMMDD format
+today=$(date +"%y%m%d")
 
-  rsync -av "$src" "$dst"
-}
+# Construct destination subdirectory
+dest_subdir="$dest_dir/$today"
+
+# Create destination subdirectory if it doesn't exist
+mkdir -p "$dest_subdir"
 
 # inotifywait command (monitor for close_write event)
-inotifywait -mrq --timefmt '%Y%m%d' -e close_write "$source_dir" | while IFS= read -r line; do
+inotifywait -mrq --format "%w%f" -e close_write "$source_dir" | while IFS= read -r line; do
   # Extract file path from inotifywait output
-  file_path=$(echo "$line" | awk '{print $NF}') 
+  file_path="$line"
 
-  # Extract directory name from file path
-  dir=$(dirname "$file_path")
+  # Copy the file to the destination subdirectory
+  cp -p "$file_path" "$dest_subdir" 
 
-  # Check if directory name matches expected format (YYYYMMDD)
-  if [[ "$dir" =~ ^[0-9]{8}$ ]]; then
-    # Construct destination directory path
-    dest_subdir="$dest_dir/$dir"
-
-    # Create destination directory if it doesn't exist
-    mkdir -p "$dest_subdir"
-
-    # Copy files recursively
-    copy_files "$dir" "$dest_subdir"
-
-    echo "Copied files from '$dir' to '$dest_subdir'"
-  fi
+  echo "Copied file '$file_path' to '$dest_subdir'"
 done
