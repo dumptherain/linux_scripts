@@ -1,5 +1,30 @@
 #!/bin/bash
 
+
+# To run this script continuously on system startup (via systemd), follow these steps:
+# 1. Make the script executable:
+#      chmod +x /home/mini/linux_scripts/obs_copy.sh
+# 2. Create a systemd service file:
+#      sudo nano /etc/systemd/system/obs_copy.service
+#    And add the following content (adjust 'User' and 'Group'):
+#
+#      [Unit]
+#      Description=OBS Copy Service
+#
+#      [Service]
+#      ExecStart=/home/mini/linux_scripts/obs_copy.sh
+#      Restart=always
+#      User=mini
+#      Group=mini
+#
+#      [Install]
+#      WantedBy=multi-user.target
+#
+# 3. Enable and start the service:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable obs_copy.service
+#      sudo systemctl start obs_copy.service
+
 source_dir="/home/mini/Videos/OBS"
 dest_dir="/mnt/a/youtube/recordings"
 
