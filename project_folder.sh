@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# The target directory is the argument passed to the script
-TARGET_DIR="$1"
+# Use the current working directory as the target
+TARGET_DIR="."
+
+# Debugging: Print the target directory
+echo "Creating folder structure in: $TARGET_DIR"
 
 # Create the folder structure
 mkdir -p "${TARGET_DIR}/1-IN"
@@ -13,3 +16,4 @@ mkdir -p "${TARGET_DIR}/3-OUT/yymmdd"
 mkdir -p "${TARGET_DIR}/4-CASE"
 
 echo "Folder structure created in ${TARGET_DIR}"
+
