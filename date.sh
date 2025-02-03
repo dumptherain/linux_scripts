@@ -4,4 +4,5 @@
 DATE=$(date +'%y%m%d')
 
 # Create a new directory with the current date as its name
-mkdir -p "$1/$DATE"
+mkdir -p "./$DATE"
+
