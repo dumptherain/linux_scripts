@@ -8,7 +8,7 @@ import configparser
 
 # --- Configuration handling ---
 CONFIG_FILE = os.path.expanduser("~/.batch_tk_config.ini")
-DEFAULT_SCRIPT_LOCATION = "/home/mini2/linux_scripts"
+DEFAULT_SCRIPT_LOCATION = "/home/mini/linux_scripts"
 
 config = configparser.ConfigParser()
 if os.path.exists(CONFIG_FILE):

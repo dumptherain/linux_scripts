@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Capture the directory from which the script was launched
+START_DIR="$(pwd)"
+
 # Initialize variables with default language set to English
 LANGUAGE_ARG="--language English"
 AUDIO_FILE=""
@@ -48,11 +51,11 @@ echo "Script will run in directory: $AUDIO_DIR"
 
 # Navigate to the directory where Whisper is installed
 echo "Navigating to Whisper directory..."
-cd /home/pscale/whisper
+cd /home/mini/whisper
 
 # Activate the Python environment
 echo "Activating Python environment..."
-source /home/pscale/whisper/whisper/bin/activate
+source /home/mini/whisper/whisper_env/bin/activate
 
 # Print the current directory and files to confirm the presence of the audio file
 echo "Current directory: $(pwd)"
@@ -60,17 +63,41 @@ echo "Listing files in audio directory:"
 ls -l "$AUDIO_DIR"
 
 # Run Whisper with the audio file provided as an argument
+OUTPUT_FILE="$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav).txt"
 echo "Running Whisper to transcribe audio with language flag $LANGUAGE_ARG..."
-whisper "$AUDIO_FILE" $LANGUAGE_ARG > "$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav).txt"
+whisper "$AUDIO_FILE" $LANGUAGE_ARG --device cuda > "$OUTPUT_FILE"
 
 # Check if the output file was created
-OUTPUT_FILE="$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav).txt"
 if [ -f "$OUTPUT_FILE" ]; then
     echo "Transcription complete: $OUTPUT_FILE"
 
-    # Run the formattxt.sh script with the output file as argument
+    # ================================================
+    #  Run formattxt.sh to format the transcription
+    # ================================================
     echo "Running formattxt.sh to format the transcription..."
-    formattxt.sh "$OUTPUT_FILE"
+    # If formattxt.sh is in your PATH, you can just use:
+    #   formattxt.sh "$OUTPUT_FILE"
+    # Otherwise, provide the full path, e.g.:
+    #   /home/mini/whisper/formattxt.sh "$OUTPUT_FILE"
+    /home/mini/linux_scripts/formattxt.sh "$OUTPUT_FILE"
+
+    # If formattxt.sh produces a new file, e.g.:
+    FORMATTED_FILE="$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav)_formatted.txt"
+
+    # Create the 'transcribes' folder where this script was originally launched
+    mkdir -p "$START_DIR/transcribes"
+
+    # Move the original .txt file
+    mv "$OUTPUT_FILE" "$START_DIR/transcribes/"
+    echo "Moved original transcription to: $START_DIR/transcribes/"
+
+    # If the formatted file exists, move that too
+    if [ -f "$FORMATTED_FILE" ]; then
+        mv "$FORMATTED_FILE" "$START_DIR/transcribes/"
+        echo "Moved formatted transcription to: $START_DIR/transcribes/"
+    else
+        echo "No separate formatted file found."
+    fi
 else
     echo "Failed to create output file."
 fi
@@ -78,3 +105,4 @@ fi
 # Deactivate the Python environment
 echo "Deactivating Python environment..."
 deactivate
+

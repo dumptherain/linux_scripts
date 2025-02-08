@@ -2,7 +2,7 @@
 
 # Check if the input argument (filename) is provided
 if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 filename.mp4"
+    echo "Usage: $0 <input_video>"
     exit 1
 fi
 
