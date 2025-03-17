@@ -1,31 +1,51 @@
 #!/bin/bash
 
-# Check for correct usage
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <input_video_file>"
+# Default sensitivity level
+sensitivity=7
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s)
+            shift
+            sensitivity=$1
+            if ! [[ "$sensitivity" =~ ^[0-9]+$ ]] || [ "$sensitivity" -lt 0 ] || [ "$sensitivity" -gt 10 ]; then
+                echo "Sensitivity must be a number between 0 and 10."
+                exit 1
+            fi
+            ;;
+        *)
+            if [[ -z "$input_video" ]]; then
+                input_video="$1"
+            else
+                echo "Unexpected argument: $1"
+                exit 1
+            fi
+            ;;
+    esac
+    shift
+done
+
+if [[ -z "$input_video" ]]; then
+    echo "Usage: $0 <input_video_file> [-s <sensitivity 0-10>]"
     exit 1
 fi
-
-# Input video file
-input_video="$1"
 
 # Create the output directory named "frames" if it doesn't exist
 output_dir="frames"
 mkdir -p "$output_dir"
 
 # Get the total duration of the video in seconds
-duration=$(ffprobe -i "$input_video" -show_entries format=duration -v quiet -of csv="p=0" -sexagesimal)
+duration=$(ffprobe -i "$input_video" -show_entries format=duration -v quiet -of csv="p=0")
+duration_seconds=$(printf "%.0f" "$duration")
 
-# Convert duration to seconds for easier arithmetic (this assumes that the duration is in the format hh:mm:ss)
-IFS=: read -ra TIME <<< "$duration"
-duration_seconds=$((${TIME[0]}*3600 + ${TIME[1]}*60 + ${TIME[2]%.*}))
-
-# Interval at which to extract frames (you might want to adjust this)
-interval=5
+# Define interval based on sensitivity
+interval=$((10 - sensitivity + 1))
 
 # Loop through the video and extract frames at the specified interval
-for i in $(seq 0 $interval $duration_seconds); do
-    ffmpeg -ss $i -i "$input_video" -vf "select='eq(n\,$i)'" -vframes 1 "$output_dir/frame_$(printf "%04d" $i).jpg"
+for ((i=0; i<=duration_seconds; i+=interval)); do
+    ffmpeg -ss $i -i "$input_video" -vframes 1 "$output_dir/frame_$(printf "%04d" $i).jpg"
 done
 
 echo "Still frames have been saved to $output_dir."
+
