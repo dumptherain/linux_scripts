@@ -30,7 +30,7 @@ res="${width}x${height}"
 echo "Adjusted resolution: $res"
 
 # Default values
-fps=24
+fps=25
 
 # Parse command-line arguments
 while (( "$#" )); do
