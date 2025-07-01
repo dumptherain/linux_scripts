@@ -8,7 +8,7 @@ import configparser
 
 # --- Configuration handling ---
 CONFIG_FILE = os.path.expanduser("~/.batch_tk_config.ini")
-DEFAULT_SCRIPT_LOCATION = "/home/mini/linux_scripts"
+DEFAULT_SCRIPT_LOCATION = "/home/mini2/linux_scripts"
 
 config = configparser.ConfigParser()
 if os.path.exists(CONFIG_FILE):
@@ -66,7 +66,9 @@ def run_processing():
     input_folders = list(input_listbox.get(0, tk.END))
     output_folder = output_entry.get()
     script_loc = script_entry.get()
-    
+    fps_value = fps_entry.get()
+
+    # Validate inputs
     if not input_folders:
         messagebox.showerror("Error", "No input folders selected!")
         return
@@ -76,6 +78,12 @@ def run_processing():
     if not os.path.isdir(script_loc):
         messagebox.showerror("Error", "Script location is not a valid directory!")
         return
+
+    # Validate FPS input
+    try:
+        fps_int = int(fps_value)
+    except ValueError:
+        fps_int = 25
 
     # Build a list of commands based on selected checkboxes.
     commands = []
@@ -100,16 +108,16 @@ def run_processing():
     for folder in input_folders:
         for cmd in commands:
             full_cmd = os.path.join(script_loc, cmd)
+            # Append the -fps flag
+            full_cmd_with_fps = f"{full_cmd} -fps {fps_int}"
             try:
-                result = subprocess.run(full_cmd, shell=True, cwd=folder,
+                result = subprocess.run(full_cmd_with_fps, shell=True, cwd=folder,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE,
                                         text=True)
                 if result.returncode != 0:
-                    messagebox.showerror("Error", f"Processing failed in:\n{folder}\nCommand: {full_cmd}\nError: {result.stderr}")
-                    # Continue to update progress even if a command fails.
+                    messagebox.showerror("Error", f"Processing failed in:\n{folder}\nCommand: {full_cmd_with_fps}\nError: {result.stderr}")
                 else:
-                    # Look for the output filename as provided by the script.
                     output_file = None
                     for line in result.stdout.splitlines():
                         if "Output filename will be" in line:
@@ -118,7 +126,6 @@ def run_processing():
                                 output_file = parts[1].strip()
                                 break
 
-                    # Fallback: check for any .mp4 file.
                     if output_file is None:
                         mp4_files = [f for f in os.listdir(folder) if f.endswith(".mp4")]
                         if mp4_files:
@@ -126,21 +133,20 @@ def run_processing():
                             output_file = mp4_files[0]
 
                     if output_file:
-                        # Use the filename as returned by the script.
                         src = os.path.join(folder, output_file)
                         dest = os.path.join(output_folder, output_file)
                         os.rename(src, dest)
                     else:
-                        messagebox.showerror("Error", f"Could not determine output file in:\n{folder}\nCommand: {full_cmd}")
+                        messagebox.showerror("Error", f"Could not determine output file in:\n{folder}\nCommand: {full_cmd_with_fps}")
             except Exception as e:
-                messagebox.showerror("Error", f"Error processing {folder} with {full_cmd}:\n{e}")
+                messagebox.showerror("Error", f"Error processing {folder} with {full_cmd_with_fps}:\n{e}")
 
             task_count += 1
             progress_bar["value"] = task_count
-            root.update_idletasks()  # Ensure the progress bar updates
+            root.update_idletasks()
 
     status_label.config(text="Conversion Done", fg="green")
-    progress_bar["value"] = 0  # Optionally reset the progress bar
+    progress_bar["value"] = 0
 
 # --- Build the GUI ---
 root = tk.Tk()
@@ -189,6 +195,14 @@ prores422_var = tk.BooleanVar(value=False)
 tk.Checkbutton(frame_command, text="exrtomp4.sh", variable=mp4_var).pack(anchor=tk.W)
 tk.Checkbutton(frame_command, text="exrtoprores444.sh", variable=prores444_var).pack(anchor=tk.W)
 tk.Checkbutton(frame_command, text="exrtoprores422.sh", variable=prores422_var).pack(anchor=tk.W)
+
+# FPS Input
+frame_fps = tk.Frame(root)
+frame_fps.pack(padx=10, pady=5, fill=tk.X)
+tk.Label(frame_fps, text="FPS:").pack(side=tk.LEFT)
+fps_entry = tk.Entry(frame_fps, width=10)
+fps_entry.pack(side=tk.LEFT, padx=5)
+fps_entry.insert(0, "25")
 
 # Output Folder Selection
 frame_output = tk.Frame(root)
