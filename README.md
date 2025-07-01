@@ -1,65 +1,103 @@
 # Linux Scripts
-A collection of bash scripts that speed up small everyday tasks for me working on CG/VFX jobs.
 
-- [aration](#aratio)
-- [exrtomp4](#exrtomp4)
-- [mergeproes](#mergeprores)
-- [mp4](#mp4)
-- [smp4](#smp4)
-- [prores422hq](#prores422hq)
-- [prores422](#prores422)
-- [exrarchive](#exrarchive)
-- [grid3](#grid3)
-- [monitor](#monitor)
-
-
+A collection of small scripts used to speed up everyday CG/VFX work on Linux. They cover video conversion, EXR sequence processing, file management and various utility tasks.
 
 ## Requirements
 - [ffmpeg](https://www.ffmpeg.org/)
-- [imagemagick](https://imagemagick.org/index.php)
-- [parallel](https://www.gnu.org/software/parallel/)
-- [openimageio-tools](https://github.com/OpenImageIO/oiio)
-- OCIO environment variable set
+- [ImageMagick](https://imagemagick.org/index.php)
+- [GNU parallel](https://www.gnu.org/software/parallel/)
+- [OpenImageIO tools](https://github.com/OpenImageIO/oiio)
+- OCIO environment variables
 
 ### Installation
-For Debian-based Linux distributions, you can install these using the package manager apt:
-`sudo apt-get install ffmpeg imagemagick parallel openimageio-tools`
-For the OCIO environment variable, please refer to the documentation on how to [set environment variables in Linux](https://www.serverlab.ca/tutorials/linux/administration-linux/how-to-set-environment-variables-in-linux/).
+For Debian based distributions install the dependencies via apt:
 
-### aratio
-This command followed by the input video(s) to target will result in the most commonly to be delivered aspect ratios for online video media. The highest possible resolution from the given input video will be used.
-- 1:1
-- 4:5
-- 16:9
-- 9:16
+```bash
+sudo apt-get install ffmpeg imagemagick parallel openimageio-tools
+```
 
-### exrtomp4
-Takes an .exr sequence in ACEScg color space in the current directory and converts it into an .mp4 with sRGB color space. This command defaults to 24 fps at the resolution of the images provided. The following flags can be used at the moment: 
-- -fps 
-- -res
-Example:
-`exrtomp4 -fps 30 -res 1080x1080`
+Set the OCIO environment variable according to your colour configuration.
 
-### mergeproes
-This is meant as a workaround for the nuke indie resolution limit. It takes two prores 444 files (`*_left.mov` + `*_right.mov`) in a current directory and merges them into a single prores 444 file, preserving the color space. 
+## Script Overview
+Scripts are grouped roughly by purpose. Most of them are simple shell utilities and can be run from any directory once the repo is on your `PATH`.
 
-### mp4
-Takes any video files and converts them into compressed .mp4 files. The output is then moved into a folder named `mp4`.
+### Video Conversion & Encoding
+- **aratio.sh** – crop a video into 1:1, 4:5, 16:9 and 9:16 versions.
+- **aratio_high.sh** – high quality variant of `aratio.sh` using slower encoding settings.
+- **exrtomp4.sh** – convert an ACEScg EXR sequence to an sRGB MP4.
+- **exrtoprores422.sh** – convert an EXR sequence to ProRes 422.
+- **exrtoprores444.sh** – convert an EXR sequence to ProRes 444.
+- **movtoexr.sh** – turn a video file into a DWAB compressed EXR sequence.
+- **mkv_mov.sh** – convert an MKV into a ProRes 422 MOV file.
+- **mp4.sh** / **mp4hq.sh** – convert videos to MP4 (standard or high quality).
+- **smp4.sh** – create a smaller MP4 in the same folder.
+- **prores422hq.sh** – encode videos as ProRes 422 HQ.
+- **prores444.sh** – encode videos as ProRes 444.
+- **webmp4.sh** / **webmp4_smaller.sh** – create web friendly MP4s.
+- **pngtomp4.sh** – stitch a PNG sequence into an MP4.
+- **mp4topng.sh** – extract frames from a video as PNGs.
+- **mp4towav.sh** – extract a WAV track from an MP4.
+- **videotomp3.sh** – convert a video to MP3 audio.
+- **videotojpg.sh** / **videotopng.sh** – convert a video to an image sequence.
+- **videototxt.sh** – convert a video to MP3 and transcribe it using Whisper.
 
-### smp4
-Takes any video files and converts them into compressed .mp4 files with a _small suffix in the same folder as the original.
+### Sequence and Image Tools
+- **exrarchive.sh** – scan subfolders for EXR sequences and convert them to MP4.
+- **exrmerge.sh** – merge `_l.exr` and `_r.exr` images into a single file.
+- **exrtojpg.sh** – convert a single EXR to JPG.
+- **exrtotiff.sh** – convert a single EXR to TIFF.
+- **exrtotiff_ProPhotoRGB.sh** – create a gamma encoded ProPhoto RGB TIFF from an EXR.
+- **extractstills.sh** / **autocut.sh** – grab still frames from a video based on a sensitivity setting.
+- **extractallstills.sh** – run `extractstills.sh` across an entire directory tree.
+- **pngtomp4.sh** – convert PNG sequences to MP4.
+- **thumbnail.sh** and **.thumbnail.sh** – extract specific or first frames as thumbnails.
+- **montage.sh**, **montage4.sh**, **montage6.sh** – build mosaics from numbered EXR frames.
 
-### proress422hq
-Takes any video files and converts them into .prores422hq files. The output is then moved into a folder named `prores422hq`.
+### Video Editing Utilities
+- **joinvideo.sh** / **videomerge.sh** – concatenate multiple videos into one.
+- **mergeprores.sh** / **mergeprores2.sh** – merge left/right ProRes clips side by side.
+- **grid3.sh** and **grid3_backup.sh** – generate 3×3 grid videos from MP4s.
+- **grid_play.sh** – launch multiple videos in a grid layout using mpv.
+- **trim.sh** – trim frames from the start or end of a video.
+- **record.sh** – desktop + webcam recorder with optional live preview.
+- **hdri.sh** – run the DiffusionLight HDRI generation pipeline.
 
-### proress422
-Takes any video files and converts them into .prores422 files. The output is then moved into a folder named `prores422hq`.
+### GIFs and Watchers
+- **gif.sh** and **gif_small.sh** – create GIFs from videos (normal or smaller).
+- **watch_convert_to_gif.sh** – watch a folder and automatically convert new videos to GIF.
+- **watch_move_videos.sh** – monitor a folder and move incoming videos to a subdirectory.
 
-### exrarchive
-Looks through all subfolders to find exr sequences and convert them from ACEScg into an sRGB .mp4 file. You will be shown a tree view off all subfolder. You can write the subfolders that should be ignored. When the script is done you can choose if you want to add all mp4 files into a new folder. If so just type in the name and it will create that folder and move the mp4's into it.
+### Audio and Transcription
+- **applyaudio.sh** – attach the same audio track to multiple videos.
+- **noaudio.sh** – remove the audio stream from a video file.
+- **mp4towav.sh** and **videotomp3.sh** – extract audio tracks.
+- **transcribe.sh** – run Whisper on an audio file.
+- **formatjson.sh** and **formattxt.sh** – helper scripts to clean up Whisper output.
+- **rft_to_txt.sh** – convert RTF documents to plain text.
 
-### grid3
-This script takes all mp4 files in a current direcotory and makes 3x3 grids.
+### Desktop & System Utilities
+- **date.sh** – create a directory named after today’s date.
+- **project_folder.sh** – create a standard project folder hierarchy.
+- **folder.sh** – build directories from an indented tree listing.
+- **clean.sh** – recursively remove temporary folders named `tmp*`.
+- **htmlpreview.sh** – generate a simple HTML gallery for selected files.
+- **open_clipboard.sh** – open a path or image sequence from the clipboard.
+- **chatid.sh** – get the last chat ID from a Telegram bot.
+- **monitor.sh** / **monitor2.sh** / **mm.sh** – system monitoring helpers using tmux.
+- **obs_copy.sh** – automatically copy new OBS recordings to dated folders.
+- **syncblender.sh** – rsync Blender configuration to a remote host.
+- **set_wacom.sh**, **wacom1.sh**, **wacom2.sh**, **wacom3.sh** – map a Wacom tablet to various monitor setups.
+- **sine.sh** – toggle an audible test tone.
+- **deadline_env_mint.sh** – wrapper to start Deadline with custom library paths.
 
-### monitor
-this script opens up a tmux session with a split view of nvtop and btm to monitor your system during rendering.
+### Desktop Integration
+- **create_desktop.sh** – create KDE service menu files for scripts.
+- **deploy_desktop_files.sh** – install the `.desktop` files from `desktop_files/`.
+- **desktop_files/** – example service menu entries used with Dolphin/Nemo.
+
+### Python GUI
+- **batchexrtomp4.py** – a Tkinter application to batch convert EXR sequences to various formats.
+
+## Usage
+Most scripts are self‑contained. Place this repository somewhere in your `PATH` or call the scripts with their full path. Read each script for exact options – many accept command line flags to tweak behaviour.
+
