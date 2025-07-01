@@ -1,11 +1,17 @@
 #!/bin/bash
 
-mkdir prores444
-for i in *.*; do ffmpeg -i "$i" -c:v prores_ks \
--profile:v 4 \
--vendor apl0 \
--bits_per_mb 8000 \
--pix_fmt yuva444p10le \
-./prores444/"${i%.*}.mov"; done
+mkdir -p prores444
+for i in *.*; do
+  ffmpeg -i "$i" \
+    -c:v prores_ks \
+    -profile:v 3 \
+    -pix_fmt yuv444p10le \
+    -color_range pc \
+    -colorspace bt709 \
+    -color_trc bt709 \
+    -color_primaries bt709 \
+    -c:a pcm_s16le \
+    ./prores444/"${i%.*}.mov"
+done
 
 exit
