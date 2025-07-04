@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# record_dual_sync.sh — desktop 30 FPS + webcam + audio, remuxed to .mov for Resolve
-
+# record_dual_sync.sh — desktop 30 FPS + webcam + audio, no preview
 set -euo pipefail
 
 ###############################################################################
@@ -10,9 +9,9 @@ WEBCAM_RES="3840x2160"
 WEBCAM_FPS=30
 WEBCAM_PIXFMT="yuyv422"
 
-AUDIO_DEV="hw:1,0"  # ALSA device for Zoom P4
+AUDIO_DEV="alsa_input.usb-ZOOM_Corporation_ZOOM_P4_Audio_000000000000-00.iec958-stereo"
 
-NVENC_PRESET="p3"  # Faster than p7
+NVENC_PRESET="p7"
 DEFAULT_OUT_DIR="$HOME/Videos/recording"
 MONITOR_FPS=30
 ###############################################################################
@@ -23,7 +22,7 @@ MONITOR_FPS=30
 BASE_OUT_DIR="${1:-$DEFAULT_OUT_DIR}"
 
 ############################
-# Make daily folder (YYYYMMDD)
+# Make daily folder  (YYYYMMDD)
 ############################
 DAY_DIR="$(date +%Y%m%d)"
 OUT_DIR="${BASE_OUT_DIR}/${DAY_DIR}"
@@ -87,43 +86,14 @@ ffmpeg \
     -thread_queue_size 1024 -f v4l2 -video_size "$WEBCAM_RES" \
     -framerate "$WEBCAM_FPS" -pixel_format "$WEBCAM_PIXFMT" \
     -use_wallclock_as_timestamps 1 -i "$WEBCAM_DEV" ) \
-  -thread_queue_size 512 -f alsa -use_wallclock_as_timestamps 1 -i "$AUDIO_DEV" \
-  -copyts -start_at_zero -vsync vfr -async 1 -af aresample=async=1 \
+  -thread_queue_size 512 -f pulse -i "$AUDIO_DEV" \
+  -copyts -start_at_zero -vsync vfr \
   \
   -map 0:v -map $( $USE_WEBCAM && echo "2" || echo "1" ):a \
     -c:v h264_nvenc -preset "$NVENC_PRESET" -rc constqp -qp 18 \
-    -c:a aac -b:a 192k "$desktop_out" \
+    -c:a aac -b:a 320k "$desktop_out" \
   \
   $( $USE_WEBCAM && printf '%s ' \
     -map 1:v -map 2:a -c:v h264_nvenc -preset "$NVENC_PRESET" \
-    -qp 23 -c:a aac -b:a 192k "$webcam_out" )
-
-############################
-# Remux to .mov with PCM audio
-############################
-echo "🔁 Remuxing to .mov with PCM audio for Resolve compatibility…"
-
-# Remux desktop video
-desktop_mov="${desktop_out%.mkv}.mov"
-ffmpeg -y -i "$desktop_out" \
-  -c:v copy \
-  -c:a pcm_s16le -ar 48000 -ac 2 \
-  -movflags +faststart \
-  "$desktop_mov"
-
-# Remux webcam video (if recorded)
-if [[ "$USE_WEBCAM" == true ]]; then
-  webcam_mov="${webcam_out%.mkv}.mov"
-  ffmpeg -y -i "$webcam_out" \
-    -c:v copy \
-    -c:a pcm_s16le -ar 48000 -ac 2 \
-    -movflags +faststart \
-    "$webcam_mov"
-fi
-
-# Optional: delete MKVs after remux
-rm -f "$desktop_out"
-$USE_WEBCAM && rm -f "$webcam_out"
-
-echo "✅ Done: Files saved to $OUT_DIR — fully Resolve-compatible."
+    -qp 23 -c:a aac -b:a 320k "$webcam_out" )
 

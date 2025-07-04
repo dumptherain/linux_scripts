@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# record_dual_sync.sh — desktop 30 FPS + webcam + audio, remuxed to .mov for Resolve
+# record_dual_sync.sh — desktop 30 FPS + webcam + audio, remuxed to .mov
 
 set -euo pipefail
 
@@ -10,9 +10,9 @@ WEBCAM_RES="3840x2160"
 WEBCAM_FPS=30
 WEBCAM_PIXFMT="yuyv422"
 
-AUDIO_DEV="hw:1,0"  # ALSA device for Zoom P4
+AUDIO_DEV="alsa_input.usb-ZOOM_Corporation_ZOOM_P4_Audio_000000000000-00.iec958-stereo"
 
-NVENC_PRESET="p3"  # Faster than p7
+NVENC_PRESET="p3"  # faster than p7, still great quality
 DEFAULT_OUT_DIR="$HOME/Videos/recording"
 MONITOR_FPS=30
 ###############################################################################
@@ -87,8 +87,8 @@ ffmpeg \
     -thread_queue_size 1024 -f v4l2 -video_size "$WEBCAM_RES" \
     -framerate "$WEBCAM_FPS" -pixel_format "$WEBCAM_PIXFMT" \
     -use_wallclock_as_timestamps 1 -i "$WEBCAM_DEV" ) \
-  -thread_queue_size 512 -f alsa -use_wallclock_as_timestamps 1 -i "$AUDIO_DEV" \
-  -copyts -start_at_zero -vsync vfr -async 1 -af aresample=async=1 \
+  -thread_queue_size 512 -f pulse -i "$AUDIO_DEV" \
+  -copyts -start_at_zero -vsync vfr \
   \
   -map 0:v -map $( $USE_WEBCAM && echo "2" || echo "1" ):a \
     -c:v h264_nvenc -preset "$NVENC_PRESET" -rc constqp -qp 18 \
@@ -99,9 +99,9 @@ ffmpeg \
     -qp 23 -c:a aac -b:a 192k "$webcam_out" )
 
 ############################
-# Remux to .mov with PCM audio
+# Remux to .mov for Resolve
 ############################
-echo "🔁 Remuxing to .mov with PCM audio for Resolve compatibility…"
+echo "🔁 Remuxing to .mov with PCM audio for Resolve…"
 
 # Remux desktop video
 desktop_mov="${desktop_out%.mkv}.mov"
@@ -121,9 +121,9 @@ if [[ "$USE_WEBCAM" == true ]]; then
     "$webcam_mov"
 fi
 
-# Optional: delete MKVs after remux
-rm -f "$desktop_out"
-$USE_WEBCAM && rm -f "$webcam_out"
+# Optional cleanup (uncomment to remove original MKVs)
+# rm -f "$desktop_out"
+# $USE_WEBCAM && rm -f "$webcam_out"
 
-echo "✅ Done: Files saved to $OUT_DIR — fully Resolve-compatible."
+echo "✅ Done: Files saved to $OUT_DIR (mov + audio compatible with Resolve)"
 
