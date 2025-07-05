@@ -9,7 +9,7 @@ DEFAULT_FPS=25
 
 echo "🟢  Starting EXR-to-MP4 script …"
 
-# ──────────────────────── 1. Check tools and arguments ─────────────────────
+# ──────────────────────── 1. Check tools and args ─────────────────────────
 command -v parallel >/dev/null || { echo "GNU parallel not found"; exit 1; }
 command -v oiiotool  >/dev/null || { echo "oiiotool not found";  exit 1; }
 command -v ffmpeg    >/dev/null || { echo "ffmpeg not found";    exit 1; }
@@ -41,13 +41,13 @@ res="${width}x${height}"
 echo "Using FPS=$fps , Resolution=$res"
 echo "Metadata overlay: enabled"
 
-# ───────────────────────────── 3. Temp workspace ─────────────────────────────
+# ──────────────────────── 3. Temp workspace ─────────────────────────────
 tmpdir=$(mktemp -d -p .)
+tmpdir=$(cd "$tmpdir" && pwd)  # absolute path
+export tmpdir
 echo "Temp dir: $tmpdir"
-cp ./*.exr "$tmpdir/"
-pushd "$tmpdir" >/dev/null
 
-# ───────────────────────────── 4. Extract Metadata ──────────────────────────
+# ──────────────────────── 4. Extract Metadata ───────────────────────────
 echo "🔍 Extracting metadata …"
 find . -maxdepth 1 -name '*.exr' | sort -V | \
 parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer '
@@ -77,18 +77,20 @@ parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer 
     "$rt_sec" "$rt_hms" \
     "$gpu_label" "$gpu_pct" \
     "$cpu_label" "$cpu_pct"
-' > metadata.txt
+' > "$tmpdir/metadata.txt"
 
-total_rt_sec=$(awk -F'|' '{sum+=$10} END{printf "%.4f",sum}' metadata.txt)
+total_rt_sec=$(awk -F'|' '{sum+=$10} END{printf "%.4f",sum}' "$tmpdir/metadata.txt")
 printf -v total_rt_hms '%02d:%02d:%05.2f' \
         $(awk -v t="$total_rt_sec" 'BEGIN{h=int(t/3600); m=int((t%3600)/60); s=t%60; print h,m,s}')
 echo "⏱  Total render time: $total_rt_hms"
 
-# ──────────────────────── 5. EXR → JPG Conversion ────────────────────────────
+# ──────────────────────── 5. EXR → JPG Conversion ────────────────────────
 echo "🎨 Converting EXRs to JPGs …"
-cat metadata.txt | sort -V | \
+cat "$tmpdir/metadata.txt" | sort -V | \
 parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --colsep '\|' --halt soon,fail=1 --line-buffer '
-  f={1}; frame={2}; fps_tag={3}; software={4}; host={5}; datetime={6};
+  f={1}
+  fbase=${f#./}; fb=${fbase%.exr}
+  frame={2}; fps_tag={3}; software={4}; host={5}; datetime={6};
   mem={7}; comp={8}; colorspace={9}; rth={11};
   gpu_label={12}; gpu_pct={13}; cpu_label={14}; cpu_pct={15};
 
@@ -104,22 +106,25 @@ parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --colsep '\|' --halt soon,fail=1 
     --text:x=40:y=320:size=28 "GPU: ${gpu_label:-N/A} (${gpu_pct:-0}%)" \
     --text:x=40:y=360:size=28 "CPU: ${cpu_label:-N/A} (${cpu_pct:-0}%)" \
     --text:x=40:y=400:size=28 "TotalRender: '"$total_rt_hms"'" \
-    -o "${f%.exr}_converted.jpg"
+    -o "$tmpdir/${fb}_converted.jpg"
 '
 
-# ───────────────────────────── 6. Assemble MP4 ───────────────────────────────
+# ───────────────────────── 6. Assemble MP4 ────────────────────────────────
 echo "📜  Preparing list for FFmpeg …"
-ls *_converted.jpg | sort -V | sed "s|^|file '|;s|$|'|" > files.txt
+ls "$tmpdir"/*_converted.jpg | sort -V \
+  | sed "s|^|file '|;s|$|'|" > "$tmpdir/files.txt"
+
 out_base=$(basename "$first_exr" .exr | sed -E 's/\.[0-9]+$//')
 out_mp4="${out_base}.mp4"
 
 echo "🎞  Encoding MP4 → $out_mp4"
-ffmpeg -y -loglevel error -f concat -safe 0 -i files.txt \
-       -c:v libx264 -pix_fmt yuv420p -r "$fps" -s "$res" "$out_mp4"
+ffmpeg -y -loglevel error -f concat -safe 0 -i "$tmpdir/files.txt" \
+       -c:v libx264 -pix_fmt yuv420p -r "$fps" -s "$res" \
+       "$tmpdir/$out_mp4"
 
-# ─────────────────────────────── 7. Cleanup ─────────────────────────────────
-popd >/dev/null
+# ───────────────────────── 7. Cleanup ────────────────────────────────────
 mv "$tmpdir/$out_mp4" .
 rm -rf "$tmpdir"
+
 echo "✅  Done – output is $out_mp4"
 
