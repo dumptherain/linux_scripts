@@ -1,4 +1,5 @@
 #!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 
 # Create the output directory if it doesn't already exist
 mkdir -p mp4_web

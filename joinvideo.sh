@@ -1,4 +1,5 @@
 #!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 
 # Create an array to hold the input files
 inputs=()

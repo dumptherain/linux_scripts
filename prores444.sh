@@ -1,4 +1,5 @@
 #!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 
 mkdir -p prores444
 for i in *.*; do

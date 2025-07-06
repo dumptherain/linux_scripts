@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 # gui_exr_dailies_wrapper.sh - GUI wrapper for dailies.sh using yad (minimal fields)
 set -euo pipefail
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 
 # exrtoprores422.sh – fast EXR → PNG → ProRes422 MOV converter with optional metadata overlay
 

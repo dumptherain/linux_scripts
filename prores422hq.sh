@@ -1,4 +1,5 @@
 #!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 
 mkdir prores422hq
 for i in *.*; do ffmpeg -i "$i" -c:v prores_ks \

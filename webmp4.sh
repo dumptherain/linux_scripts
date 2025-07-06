@@ -1,4 +1,5 @@
 User
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 User
 #!/bin/bash
 

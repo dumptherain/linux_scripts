@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
 # exrtomp4.sh – fast EXR → JPG → MP4 converter with metadata overlay by default
 
 export LC_NUMERIC=C
