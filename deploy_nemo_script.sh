@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# Deploys `# @nemo` scripts into categorized subfolders, with some kept in root
+# Deploys `# @nemo` scripts to categorized subfolders in ~/.local/share/nemo/scripts
 
 SOURCE_DIR="$HOME/linux_scripts"
 TARGET_BASE="$HOME/.local/share/nemo/scripts"
 
-echo "📦 Scanning for # @nemo-tagged scripts in $SOURCE_DIR..."
+echo "🧹 Cleaning target subfolders (except root)..."
+find "$TARGET_BASE" -mindepth 1 -type d -exec rm -rf {} +
 
 mkdir -p "$TARGET_BASE"
 
-# Scripts that must stay together in the top-level folder
+# Scripts that must stay together in root due to interdependencies
 KEEP_IN_ROOT=(
   dailies.sh
   dailies_gui.sh
   exrtomp4.sh
+  exrtomp4_dailies.sh
   exrtoprores422.sh
   exrtoprores444.sh
 )
 
+# Loop over all .sh files tagged with # @nemo
 find "$SOURCE_DIR" -maxdepth 1 -type f -name "*.sh" | while read -r script; do
     name=$(basename "$script")
 
-    # Only process files tagged with # @nemo
     if head -n 10 "$script" | grep -q '# @nemo'; then
-
-        # Stay in top-level if in KEEP_IN_ROOT
+        # Determine target folder
         if [[ " ${KEEP_IN_ROOT[*]} " == *" $name "* ]]; then
             target_dir="$TARGET_BASE"
         else
-            # Categorize
             case "$name" in
                 *applyaudio*|*mp4*|*webmp4*|*joinvideo*|*mkv*|*prores*)
                     target_dir="$TARGET_BASE/video" ;;
