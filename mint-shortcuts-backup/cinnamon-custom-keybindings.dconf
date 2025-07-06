@@ -1,0 +1,99 @@
+[custom0]
+binding=['<Super>c']
+command='/home/mini2/apps/Telegram/Telegram'
+name='telegram'
+
+[custom1]
+binding=['<Super>x']
+command='"/opt/hfs20.5.613/bin/houdini"'
+name='houdini'
+
+[custom10]
+binding=['<Primary><Alt>x']
+command='/home/mini2/linux_scripts/open_clipboard.sh'
+name='openclipboard'
+
+[custom11]
+binding=['<Super>m']
+command='firefox https://music.youtube.com/'
+name='music'
+
+[custom12]
+binding=['<Super>g']
+command='firefox https://grok.com/'
+name='grok'
+
+[custom13]
+binding=['<Shift><Super>c']
+command='firefox https://chatgpt.com/'
+name='chatgpt'
+
+[custom14]
+binding=['<Shift><Super>m']
+command='spotify'
+name='spotify'
+
+[custom15]
+binding=['<Shift><Super>g']
+command='chromium gemini.google.com'
+name='gemini'
+
+[custom16]
+binding=['<Shift><Super>m']
+command='firefox https://monkeytype.com/'
+name='monketype'
+
+[custom17]
+binding=['<Shift><Super>k']
+command='/home/mini2/linux_scripts/sine.sh'
+name='sine'
+
+[custom18]
+binding=['<Shift><Super>p']
+command='/home/mini2/linux_scripts/cam_launch.sh'
+name='camLaunch'
+
+[custom19]
+binding=['<Shift><Super>r']
+command='/home/mini2/linux_scripts/record_shortcut.sh'
+name='record'
+
+[custom2]
+binding=['<Super>z']
+command='env LC_NUMERIC=C /opt/nuke/Nuke16.0v1/Nuke16.0 --indie'
+name='nuke'
+
+[custom3]
+binding=['<Shift><Super>b']
+command='/opt/blender/blender-4.3.2-linux-x64/blender'
+name='blender'
+
+[custom4]
+binding=['<Shift><Super>a']
+command='/home/mini2/apps/Bridge.AppImage --no-sandbox'
+name='quixel'
+
+[custom5]
+binding=@as []
+command='/home/mini2/linux_scripts/wacom1.sh'
+name='wacom1'
+
+[custom6]
+binding=['<Shift><Alt><Super>b']
+command='/opt/blender/blender-2.93.18-linux-x64/blender'
+name='blender.2.9'
+
+[custom7]
+binding=['<Shift><Super>q']
+command='/home/mini2/apps/LM-Studio-0.3.9-6-x64.AppImage'
+name='llmstudio'
+
+[custom8]
+binding=['<Super>w']
+command='python3 /home/mini2/linux_scripts/batchexrtomp4.py'
+name='batchexr'
+
+[custom9]
+binding=['<Primary><Shift>Escape']
+command='gnome-terminal -- bash -c "/home/mini2/linux_scripts/monitor.sh; exec bash"'
+name='monitor'
