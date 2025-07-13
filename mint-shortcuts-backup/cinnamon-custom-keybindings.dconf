@@ -63,6 +63,11 @@ binding=['<Super>z']
 command='env LC_NUMERIC=C /opt/nuke/Nuke16.0v1/Nuke16.0 --indie'
 name='nuke'
 
+[custom20]
+binding=['<Primary><Shift><Super>m']
+command='gnome-terminal -- bash -c "cmatrix -a -B -C white -u 7; exec bash"'
+name='cmatrix'
+
 [custom3]
 binding=['<Shift><Super>b']
 command='/opt/blender/blender-4.3.2-linux-x64/blender'

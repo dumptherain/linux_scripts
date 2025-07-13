@@ -1,5 +1,5 @@
 [/]
-custom-list=['custom16', 'custom14', 'custom12', 'custom10', 'custom9', 'custom8', 'custom6', 'custom5', 'custom3', 'custom1', 'custom0', '__dummy__', 'custom2', 'custom4', 'custom7', 'custom11', 'custom13', 'custom15', 'custom17', 'custom18', 'custom19']
+custom-list=['custom20', 'custom19', 'custom18', 'custom17', 'custom15', 'custom13', 'custom11', 'custom7', 'custom4', 'custom2', '__dummy__', 'custom0', 'custom1', 'custom3', 'custom5', 'custom6', 'custom8', 'custom9', 'custom10', 'custom12', 'custom14', 'custom16']
 
 [custom-keybindings/custom0]
 binding=['<Super>c']
@@ -65,6 +65,11 @@ name='record'
 binding=['<Super>z']
 command='env LC_NUMERIC=C /opt/nuke/Nuke16.0v1/Nuke16.0 --indie'
 name='nuke'
+
+[custom-keybindings/custom20]
+binding=['<Primary><Shift><Super>m']
+command='gnome-terminal -- bash -c "cmatrix -a -B -C white -u 7; exec bash"'
+name='cmatrix'
 
 [custom-keybindings/custom3]
 binding=['<Shift><Super>b']
