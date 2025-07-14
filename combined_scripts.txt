@@ -1,0 +1,4414 @@
+=== applyaudio.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Ensure FFmpeg is installed
+if ! command -v ffmpeg &> /dev/null
+then
+    echo "FFmpeg is not installed. Please install FFmpeg and try again."
+    exit
+fi
+
+# Audio file
+AUDIO_FILE="Timberland_NYC_bridge_Sound_V1.wav"
+
+# Check if the audio file exists
+if [ ! -f "$AUDIO_FILE" ]; then
+    echo "Audio file '$AUDIO_FILE' not found!"
+    exit 1
+fi
+
+# Loop through all video files in the current directory
+for VIDEO_FILE in *.mp4 *.mov *.mkv *.avi *.flv; do
+    if [ -f "$VIDEO_FILE" ]; then
+        # Extract the filename without extension
+        FILENAME="${VIDEO_FILE%.*}"
+
+        # Generate output file name
+        OUTPUT_FILE="${FILENAME}_with_audio.${VIDEO_FILE##*.}"
+
+        echo "Processing $VIDEO_FILE..."
+
+        # Add/replace audio track while preserving video settings
+        ffmpeg -i "$VIDEO_FILE" -i "$AUDIO_FILE" -c:v copy -map 0:v:0 -map 1:a:0 -shortest -y "$OUTPUT_FILE"
+
+        echo "Created $OUTPUT_FILE"
+    fi
+done
+
+echo "All video files have been processed."
+
+=== aratio_high.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Check if a file was provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <input_video_file>"
+    exit 1
+fi
+
+input_file="$1"
+base_name=$(basename -- "$input_file")
+extension="${base_name##*.}"
+filename="${base_name%.*}"
+
+# Function to crop video to a specific aspect ratio
+crop_video() {
+    local input="$1"
+    local output="$2"
+    local ratio="$3"
+
+    # Get video dimensions
+    width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$input")
+    height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$input")
+
+    # Calculate new dimensions based on aspect ratio
+    IFS=: read -r w_ratio h_ratio <<< "$ratio"
+    target_width=$(( height * w_ratio / h_ratio ))
+    target_height=$(( width * h_ratio / w_ratio ))
+
+    if [ "$target_width" -le "$width" ]; then
+        final_width="$target_width"
+        final_height="$height"
+    else
+        final_width="$width"
+        final_height="$target_height"
+    fi
+
+    # Calculate offsets for centering
+    x_offset=$(( (width - final_width) / 2 ))
+    y_offset=$(( (height - final_height) / 2 ))
+
+    # Crop video
+    ffmpeg -i "$input" -vf "crop=$final_width:$final_height:$x_offset:$y_offset" -c:v libx264 -preset veryslow -crf 18 -c:a copy "$output"
+}
+
+# Crop to different aspect ratios
+crop_video "$input_file" "${filename}_16_9.$extension" "16:9"
+crop_video "$input_file" "${filename}_1_1.$extension" "1:1"
+crop_video "$input_file" "${filename}_9_16.$extension" "9:16"
+crop_video "$input_file" "${filename}_4_5.$extension" "4:5"
+
+echo "Processing complete!"
+
+=== aratio.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Check if a file was provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <input_video_file>"
+    exit 1
+fi
+
+input_file="$1"
+base_name=$(basename -- "$input_file")
+extension="${base_name##*.}"
+filename="${base_name%.*}"
+
+# Function to crop video to a specific aspect ratio
+crop_video() {
+    local input="$1"
+    local output="$2"
+    local ratio="$3"
+
+    # Get video dimensions
+    width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$input")
+    height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$input")
+
+    # Calculate new dimensions based on aspect ratio
+    IFS=: read -r w_ratio h_ratio <<< "$ratio"
+    target_width=$(( height * w_ratio / h_ratio ))
+    target_height=$(( width * h_ratio / w_ratio ))
+
+    if [ "$target_width" -le "$width" ]; then
+        final_width="$target_width"
+        final_height="$height"
+    else
+        final_width="$width"
+        final_height="$target_height"
+    fi
+
+    # Calculate offsets for centering
+    x_offset=$(( (width - final_width) / 2 ))
+    y_offset=$(( (height - final_height) / 2 ))
+
+    # Crop video
+    ffmpeg -i "$input" -vf "crop=$final_width:$final_height:$x_offset:$y_offset" -c:a copy "$output"
+}
+
+# Crop to different aspect ratios
+crop_video "$input_file" "${filename}_16_9.$extension" "16:9"
+crop_video "$input_file" "${filename}_1_1.$extension" "1:1"
+crop_video "$input_file" "${filename}_9_16.$extension" "9:16"
+crop_video "$input_file" "${filename}_4_5.$extension" "4:5"
+
+echo "Processing complete!"
+
+=== autocut.sh ===
+#!/bin/bash
+
+# Default sensitivity level
+sensitivity=7
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s)
+            shift
+            sensitivity=$1
+            if ! [[ "$sensitivity" =~ ^[0-9]+$ ]] || [ "$sensitivity" -lt 0 ] || [ "$sensitivity" -gt 10 ]; then
+                echo "Sensitivity must be a number between 0 and 10."
+                exit 1
+            fi
+            ;;
+        *)
+            if [[ -z "$input_video" ]]; then
+                input_video="$1"
+            else
+                echo "Unexpected argument: $1"
+                exit 1
+            fi
+            ;;
+    esac
+    shift
+done
+
+if [[ -z "$input_video" ]]; then
+    echo "Usage: $0 <input_video_file> [-s <sensitivity 0-10>]"
+    exit 1
+fi
+
+# Create the output directory named "frames" if it doesn't exist
+output_dir="frames"
+mkdir -p "$output_dir"
+
+# Get the total duration of the video in seconds
+duration=$(ffprobe -i "$input_video" -show_entries format=duration -v quiet -of csv="p=0")
+duration_seconds=$(printf "%.0f" "$duration")
+
+# Define interval based on sensitivity
+interval=$((10 - sensitivity + 1))
+
+# Loop through the video and extract frames at the specified interval
+for ((i=0; i<=duration_seconds; i+=interval)); do
+    ffmpeg -ss $i -i "$input_video" -vframes 1 "$output_dir/frame_$(printf "%04d" $i).jpg"
+done
+
+echo "Still frames have been saved to $output_dir."
+
+
+=== cam_launch.sh ===
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Define identifier for MPV process using webcam
+IDENTIFIER="av://v4l2"
+
+# Check if an MPV webcam preview is already running
+if pgrep -f "$IDENTIFIER" > /dev/null; then
+  echo "Webcam preview is running. Killing it..."
+  pkill -f "$IDENTIFIER"
+  exit 0
+fi
+
+echo "Scanning for active video devices..."
+
+VIDEO_DEV=""
+for dev in /dev/video*; do
+  if [[ -c "$dev" ]]; then
+    if v4l2-ctl --device="$dev" --all &>/dev/null; then
+      if v4l2-ctl --device="$dev" --list-formats-ext | grep -q "Size: Discrete"; then
+        VIDEO_DEV="$dev"
+        break
+      fi
+    fi
+  fi
+done
+
+if [[ -z "$VIDEO_DEV" ]]; then
+  echo "No active webcam found."
+  exit 1
+fi
+
+echo "Found active webcam: $VIDEO_DEV"
+
+RES=$(v4l2-ctl --device="$VIDEO_DEV" --list-formats-ext 2>/dev/null | awk '
+  /Size: Discrete/ && !found++ {
+    match($0, /[0-9]+x[0-9]+/, res);
+    print res[0];
+    exit
+  }
+')
+
+if [[ -z "$RES" ]]; then
+  echo "Could not extract resolution. Falling back to 1920x1080 @ 30 FPS."
+  RES="1920x1080"
+fi
+
+FPS="30"
+
+echo "Launching webcam feed: $VIDEO_DEV at $RES $FPS FPS"
+exec mpv "av://v4l2:$VIDEO_DEV" --profile=low-latency --untimed \
+  --demuxer-lavf-o=video_size=$RES --demuxer-lavf-o=framerate=$FPS
+
+
+=== cam.sh ===
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Scanning for active video devices..."
+
+VIDEO_DEV=""
+for dev in /dev/video*; do
+  if [[ -c "$dev" ]]; then
+    if v4l2-ctl --device="$dev" --all &>/dev/null; then
+      if v4l2-ctl --device="$dev" --list-formats-ext | grep -q "Size: Discrete"; then
+        VIDEO_DEV="$dev"
+        break
+      fi
+    fi
+  fi
+done
+
+if [[ -z "$VIDEO_DEV" ]]; then
+  echo "No active webcam found."
+  exit 1
+fi
+
+echo "Found active webcam: $VIDEO_DEV"
+
+# Try to get the first supported resolution
+RES=$(v4l2-ctl --device="$VIDEO_DEV" --list-formats-ext 2>/dev/null | awk '
+  /Size: Discrete/ && !found++ {
+    match($0, /[0-9]+x[0-9]+/, res);
+    print res[0];
+    exit
+  }
+')
+
+if [[ -z "$RES" ]]; then
+  echo "Could not extract resolution. Falling back to 1920x1080 @ 30 FPS."
+  RES="1920x1080"
+fi
+
+FPS="30"  # Default fallback
+
+echo "Launching webcam feed: $VIDEO_DEV at $RES $FPS FPS"
+exec mpv "av://v4l2:$VIDEO_DEV" --profile=low-latency --untimed \
+  --demuxer-lavf-o=video_size=$RES --demuxer-lavf-o=framerate=$FPS
+
+
+=== chatid.sh ===
+#!/usr/bin/env bash
+# get_chat_id.sh — prints the latest chat ID seen by your bot
+
+if [ -z "$1" ]; then
+  echo "Usage: $0 <TELEGRAM_BOT_TOKEN>"
+  exit 1
+fi
+
+TOKEN="$1"
+API="https://api.telegram.org/bot${TOKEN}"
+
+# Fetch updates and extract the last chat.id
+chat_id=$(curl -s "${API}/getUpdates" \
+  | jq -r '.result | last | .message.chat.id // empty')
+
+if [ -z "$chat_id" ]; then
+  echo "No chat ID found. Have you sent a message to your bot yet?"
+  exit 1
+fi
+
+echo "$chat_id"
+
+
+=== clean.sh ===
+#!/bin/bash
+
+# Function to remove tmp directories recursively
+remove_tmp_directories() {
+    local dir="$1"
+    echo "Processing directory: $dir"
+
+    # Find and remove all tmp directories recursively
+    find "$dir" -type d -name "tmp*" -exec rm -rf {} +
+
+    echo "All tmp directories removed from $dir"
+}
+
+# Main script starts here
+
+# Get the root directory
+root_dir=$(pwd)
+
+# Remove tmp directories starting from the root directory
+remove_tmp_directories "$root_dir"
+
+echo "All tmp directories have been removed recursively from the root directory."
+
+=== create_desktop.sh ===
+#!/bin/bash
+
+# Check if script file is provided as an argument
+if [ -z "$1" ]; then
+    echo "Usage: $0 script_file.sh"
+    exit 1
+fi
+
+# Get the script file and base name
+script_file=$1
+base_name=$(basename "$script_file" .sh)
+
+# Prompt for the service name
+read -p "Enter the service name: " service_name
+
+# Define the desktop files folder
+desktop_files_folder="./desktop_files"
+
+# Create the desktop file content
+desktop_file_content="[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=video/x-msvideo;video/quicktime;video/mp4;video/x-matroska;video/x-flv;video/mpeg;video/x-ms-wmv;
+Actions=convertToMp4
+X-KDE-Priority=TopLevel
+
+[Desktop Action convertToMp4]
+Name=Convert to MP4
+Exec=$script_file %F
+Icon=video-x-generic"
+
+# Save the desktop file
+desktop_file_path="$desktop_files_folder/$base_name.desktop"
+echo "$desktop_file_content" > "$desktop_file_path"
+
+echo "Desktop file created at $desktop_file_path"
+
+=== dailies_gui.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+# gui_exr_dailies_wrapper.sh - GUI wrapper for dailies.sh using yad (minimal fields)
+set -euo pipefail
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 🔧 CONFIGURATION
+# Location of the main “dailies” script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MAIN_SCRIPT="$SCRIPT_DIR/dailies.sh"
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Function: find the nearest “dailies” folder above a given directory
+find_dailies_folder() {
+    local dir="$1"
+    while [[ "$dir" != "/" ]]; do
+        for name in "3-DAILIES" "DAILIES" "dailies"; do
+            [[ -d "$dir/$name" ]] && { echo "$dir/$name"; return 0; }
+        done
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+if [[ -n "${DISPLAY:-}" ]] && command -v yad &>/dev/null; then
+
+    TARGET_FOLDER="${1:-$(pwd)}"
+
+    # ensure EXRs exist
+    if [[ ! -d "$TARGET_FOLDER" ]] || ! ls "$TARGET_FOLDER"/*.exr &>/dev/null; then
+        yad --error --title="Error" --text="No EXR files found in:\n$TARGET_FOLDER"
+        exit 1
+    fi
+
+    # build conversion form
+    FORM=$(yad --form \
+        --title="EXR → Video" \
+        --text="Choose options:" \
+        --field="Script:CB" "exrtomp4.sh!exrtoprores422.sh!exrtoavc.sh!exrtodnx.sh" \
+        --field="FPS" "25" \
+        --field="Metadata:CHK" FALSE \
+        --field="Verbose:CHK" FALSE \
+        --field="Overwrite:CHK" FALSE \
+        --field="Preview:CHK" FALSE \
+        --field="Custom Script:FL" "" \
+        --button="Convert:0" --button="Cancel:1" \
+        --width=600 --height=400)
+    [[ $? -ne 0 ]] && { yad --info --title="Cancelled" --text="Conversion cancelled."; exit 0; }
+
+    IFS="|" read -r SCRIPT_NAME FPS META V_FLAG F_FLAG P_FLAG CUSTOM <<<"$FORM"
+
+    # build args array
+    ARGS=()
+    if [[ -n "$CUSTOM" ]]; then
+        ARGS+=("-script" "$CUSTOM")
+    elif [[ "$SCRIPT_NAME" != "exrtomp4.sh" ]]; then
+        ARGS+=("-script" "$SCRIPT_NAME")
+    fi
+    ARGS+=("-fps" "$FPS")
+    $META  && ARGS+=("-meta")
+    $V_FLAG && ARGS+=("-v")
+    $F_FLAG && ARGS+=("-f")
+    $P_FLAG && ARGS+=("-preview")
+    ARGS+=("$TARGET_FOLDER")
+
+    # confirm
+    CMD="dailies.sh ${ARGS[*]}"
+    yad --question --title="Confirm" --text="<tt>$CMD</tt>" --width=600
+    [[ $? -ne 0 ]] && { yad --info --title="Cancelled" --text="Conversion cancelled."; exit 0; }
+
+    # ensure main script exists
+    [[ ! -f "$MAIN_SCRIPT" ]] && { yad --error --title="Error" --text="Cannot find:\n$MAIN_SCRIPT"; exit 1; }
+    chmod +x "$MAIN_SCRIPT" || true
+
+    # notify and run
+    yad --notification --text="Starting conversion…" &
+    "$MAIN_SCRIPT" "${ARGS[@]}"
+    RETCODE=$?
+
+    # final dialog
+    if [[ $RETCODE -eq 0 ]]; then
+        yad --question \
+            --title="Done" \
+            --text="✓ Conversion complete!\n\nOpen dailies folder?" \
+            --button="Open:0" --button="OK:1" --width=400
+        if [[ $? -eq 0 ]]; then
+            # locate and open today’s dailies subfolder
+            DAILIES_ROOT=$(find_dailies_folder "$TARGET_FOLDER") || {
+                yad --error --title="Error" --text="Could not locate dailies folder."
+                exit 1
+            }
+            DATE_DIR="$DAILIES_ROOT/$(date +%y%m%d)"
+            [[ -d "$DATE_DIR" ]] || {
+                yad --error --title="Error" --text="Expected folder not found:\n$DATE_DIR"
+                exit 1
+            }
+            command -v nemo &>/dev/null && nemo "$DATE_DIR" || xdg-open "$DATE_DIR"
+        fi
+    else
+        yad --error --title="Error" --text="✗ Conversion failed! See terminal."
+        exit $RETCODE
+    fi
+
+else
+    # fallback: no GUI
+    exec "$MAIN_SCRIPT" "$@"
+fi
+
+
+=== dailies.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+# exr_dailies_wrapper.sh - Wrapper for EXR conversion scripts that handles folder selection and dailies organization
+
+set -euo pipefail
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 🔧 CONFIGURATION - Change the conversion script here
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Default conversion script - change this to switch between different converters
+DEFAULT_CONVERSION_SCRIPT="exrtomp4.sh"
+
+# Alternative scripts you can use:
+# DEFAULT_CONVERSION_SCRIPT="exrtoprores422.sh"
+# DEFAULT_CONVERSION_SCRIPT="exrtoavc.sh"
+# DEFAULT_CONVERSION_SCRIPT="exrtodnx.sh"
+
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Function to find the nearest dailies folder
+find_dailies_folder() {
+    local current_dir="$1"
+    local original_dir="$current_dir"
+    
+    # Walk up the directory tree
+    while [[ "$current_dir" != "/" ]]; do
+        # Check for various dailies folder patterns
+        for dailies_name in "3-DAILIES" "DAILIES" "dailies"; do
+            local dailies_path="$current_dir/$dailies_name"
+            if [[ -d "$dailies_path" ]]; then
+                echo "$dailies_path"
+                return 0
+            fi
+        done
+        current_dir="$(dirname "$current_dir")"
+    done
+    
+    echo "❌ Error: Could not find dailies folder starting from $original_dir"
+    return 1
+}
+
+# Function to show usage
+show_usage() {
+    echo "Usage: $0 [OPTIONS] <exr_sequence_folder>"
+    echo ""
+    echo "OPTIONS:"
+    echo "  -script <name>   Use specific conversion script (default: $DEFAULT_CONVERSION_SCRIPT)"
+    echo "  -fps <number>    Set frame rate (default: 25)"
+    echo "  -res <WxH>       Set resolution (default: auto-detect)"
+    echo "  -j <number>      Set parallel jobs"
+    echo "  -meta            Include metadata overlay"
+    echo "  -h, --help       Show this help"
+    echo ""
+    echo "Available conversion scripts:"
+    echo "  exrtomp4.sh      - Convert to MP4 (H.264)"
+    echo "  exrtoprores422.sh - Convert to ProRes 422"
+    echo "  exrtoavc.sh      - Convert to AVC"
+    echo "  exrtodnx.sh      - Convert to DNxHD/DNxHR"
+    echo ""
+    echo "Examples:"
+    echo "  $0 /path/to/exr/sequence/folder"
+    echo "  $0 -fps 24 -meta /path/to/exr/sequence/folder"
+    echo "  $0 -script exrtoprores422.sh -fps 25 /path/to/exr/sequence/folder"
+}
+
+# Parse command line arguments
+CONVERSION_SCRIPT="$DEFAULT_CONVERSION_SCRIPT"
+CONVERSION_ARGS=()
+TARGET_FOLDER=""
+
+while (( $# )); do
+    case "$1" in
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        -script)
+            if [[ $# -lt 2 ]]; then
+                echo "❌ Error: -script requires a script name"
+                exit 1
+            fi
+            CONVERSION_SCRIPT="$2"
+            shift 2
+            ;;
+        -fps|-res|-j)
+            if [[ $# -lt 2 ]]; then
+                echo "❌ Error: $1 requires a value"
+                exit 1
+            fi
+            CONVERSION_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        -meta)
+            CONVERSION_ARGS+=("$1")
+            shift
+            ;;
+        -*)
+            echo "❌ Error: Unknown option $1"
+            show_usage
+            exit 1
+            ;;
+        *)
+            if [[ -n "$TARGET_FOLDER" ]]; then
+                echo "❌ Error: Multiple folders specified. Please provide only one folder."
+                exit 1
+            fi
+            TARGET_FOLDER="$1"
+            shift
+            ;;
+    esac
+done
+
+# Determine target folder - either from argument or current directory
+if [[ -z "$TARGET_FOLDER" ]]; then
+    # No folder specified, check if current directory contains EXR files
+    if ls *.exr >/dev/null 2>&1; then
+        TARGET_FOLDER="$(pwd)"
+        echo "🔍 Using current directory as EXR sequence folder"
+    else
+        echo "❌ Error: No EXR sequence folder specified and current directory contains no EXR files"
+        echo ""
+        echo "Either:"
+        echo "  1. Specify a folder path: $0 /path/to/exr/folder"
+        echo "  2. Run from within an EXR sequence folder: cd /path/to/exr/folder && $0"
+        exit 1
+    fi
+else
+    echo "🔍 Using specified EXR sequence folder"
+fi
+
+# Build the full path to the conversion script
+CONVERSION_SCRIPT_PATH="$SCRIPT_DIR/$CONVERSION_SCRIPT"
+
+# Check if conversion script exists
+if [[ ! -f "$CONVERSION_SCRIPT_PATH" ]]; then
+    echo "❌ Error: Conversion script not found: $CONVERSION_SCRIPT_PATH"
+    echo ""
+    echo "Available scripts in $SCRIPT_DIR:"
+    ls -1 "$SCRIPT_DIR"/*.sh 2>/dev/null | grep -E "(exrto|convert)" | sed 's|.*/||' || echo "  No conversion scripts found"
+    exit 1
+fi
+
+# Convert to absolute path and verify it exists
+TARGET_FOLDER="$(realpath "$TARGET_FOLDER")"
+if [[ ! -d "$TARGET_FOLDER" ]]; then
+    echo "❌ Error: Directory does not exist: $TARGET_FOLDER"
+    exit 1
+fi
+
+# Check if the folder contains EXR files (double-check)
+if ! ls "$TARGET_FOLDER"/*.exr >/dev/null 2>&1; then
+    echo "❌ Error: No EXR files found in $TARGET_FOLDER"
+    exit 1
+fi
+
+echo "🟢 Starting EXR conversion with $CONVERSION_SCRIPT..."
+echo "📁 Target folder: $TARGET_FOLDER"
+
+# Find the dailies folder
+echo "🔍 Searching for dailies folder..."
+DAILIES_FOLDER=$(find_dailies_folder "$TARGET_FOLDER")
+if [[ $? -ne 0 ]]; then
+    echo "$DAILIES_FOLDER"  # This will be the error message
+    exit 1
+fi
+
+echo "📋 Found dailies folder: $DAILIES_FOLDER"
+
+# Create date folder (YYMMDD format)
+DATE_FOLDER=$(date +%y%m%d)
+DAILIES_DATE_FOLDER="$DAILIES_FOLDER/$DATE_FOLDER"
+
+echo "📅 Creating date folder: $DAILIES_DATE_FOLDER"
+mkdir -p "$DAILIES_DATE_FOLDER"
+
+# Change to the target folder and run the conversion
+echo "🎬 Starting conversion using $CONVERSION_SCRIPT..."
+cd "$TARGET_FOLDER"
+
+# Run the conversion script with the provided arguments
+if ! "$CONVERSION_SCRIPT_PATH" "${CONVERSION_ARGS[@]}"; then
+    echo "❌ Error: Conversion failed"
+    exit 1
+fi
+
+# Find the generated video files (multiple formats possible)
+VIDEO_FILES=(*.mp4 *.mov *.mkv *.avi *.mxf)
+FOUND_FILES=()
+
+for pattern in "${VIDEO_FILES[@]}"; do
+    if [[ -f "$pattern" ]]; then
+        FOUND_FILES+=("$pattern")
+    fi
+done
+
+if [[ ${#FOUND_FILES[@]} -eq 0 ]]; then
+    echo "❌ Error: No video file was generated"
+    exit 1
+fi
+
+if [[ ${#FOUND_FILES[@]} -gt 1 ]]; then
+    echo "⚠️  Warning: Multiple video files found. Moving all of them."
+fi
+
+# Move video files to dailies folder
+for video_file in "${FOUND_FILES[@]}"; do
+    if [[ -f "$video_file" ]]; then
+        echo "📦 Moving $video_file to dailies..."
+        mv "$video_file" "$DAILIES_DATE_FOLDER/"
+        echo "✅ Successfully moved: $DAILIES_DATE_FOLDER/$video_file"
+    fi
+done
+
+echo "🎉 Conversion complete! Video files are in: $DAILIES_DATE_FOLDER"
+
+=== date.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Get the current date in the format YYMMDD
+DATE=$(date +'%y%m%d')
+
+# Create a new directory with the current date as its name
+mkdir -p "./$DATE"
+
+
+=== deadline_env_mint.sh ===
+#!/bin/bash
+
+# Set the custom LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+
+# Run the Deadline Monitor
+/opt/Thinkbox/Deadline10/bin/deadlinelauncher -monitor
+
+=== deploy_desktop_files.sh ===
+#!/bin/bash
+
+# Define source and destination directories
+SOURCE_DIR="$HOME/linux_scripts/desktop_files"
+DEST_DIR="$HOME/.local/share/kservices5/ServiceMenus"
+
+# Ensure the destination directory exists
+mkdir -p "$DEST_DIR"
+
+# Copy .desktop files with the correct permissions
+cp "$SOURCE_DIR"/*.desktop "$DEST_DIR/"
+
+# Set permissions
+chmod 644 "$DEST_DIR"/*.desktop
+
+# Print completion message
+echo "Deployment of .desktop files completed successfully."
+
+=== deploy_nemo_script.sh ===
+#!/usr/bin/env bash
+# Deploys `# @nemo` scripts to categorized subfolders in ~/.local/share/nemo/scripts
+
+SOURCE_DIR="$HOME/linux_scripts"
+TARGET_BASE="$HOME/.local/share/nemo/scripts"
+
+echo "🧹 Cleaning target subfolders (except root)..."
+find "$TARGET_BASE" -mindepth 1 -type d -exec rm -rf {} +
+
+mkdir -p "$TARGET_BASE"
+
+# Scripts that must stay together in root due to interdependencies
+KEEP_IN_ROOT=(
+  dailies.sh
+  dailies_gui.sh
+  exrtomp4.sh
+  exrtomp4_dailies.sh
+  exrtoprores422.sh
+  exrtoprores444.sh
+)
+
+# Loop over all .sh files tagged with # @nemo
+find "$SOURCE_DIR" -maxdepth 1 -type f -name "*.sh" | while read -r script; do
+    name=$(basename "$script")
+
+    if head -n 10 "$script" | grep -q '# @nemo'; then
+        # Determine target folder
+        if [[ " ${KEEP_IN_ROOT[*]} " == *" $name "* ]]; then
+            target_dir="$TARGET_BASE"
+        else
+            case "$name" in
+                *applyaudio*|*mp4*|*webmp4*|*joinvideo*|*mkv*|*prores*)
+                    target_dir="$TARGET_BASE/video" ;;
+                *exrtojpg*|*exrtotiff*|*merge*|*extract*|*archive*)
+                    target_dir="$TARGET_BASE/image" ;;
+                *montage*|*aratio*)
+                    target_dir="$TARGET_BASE/layout" ;;
+                *project*|*folder*|*date*)
+                    target_dir="$TARGET_BASE/project" ;;
+                *)
+                    target_dir="$TARGET_BASE/misc" ;;
+            esac
+        fi
+
+        mkdir -p "$target_dir"
+        cp "$script" "$target_dir/"
+        chmod +x "$target_dir/$name"
+        echo "✅ $name → $(realpath --relative-to="$TARGET_BASE" "$target_dir")"
+    fi
+done
+
+echo "🎉 Deployment complete."
+
+
+=== exrarchive.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Function to process a directory recursively
+process_directory() {
+    local root_dir="$1"
+    local dir="$2"
+    local original_dir=$(pwd)
+    local relative_dir="${dir#$root_dir/}"
+    local prefix="${relative_dir//\//.}"
+    echo "Processing directory: $dir"
+
+    cd "$dir" || return 1
+    echo "Changing into directory $dir"
+
+    # Check if there are any .exr files in the directory
+    if ! ls *.exr >/dev/null 2>&1; then
+        echo "No EXR files found in $dir, skipping..."
+        cd "$original_dir" || return 1
+        return
+    fi
+
+    echo "Executing exrtomp4.sh to convert EXR to MP4"
+    if exrtomp4.sh; then
+        echo "Conversion successful in $dir"
+        # Move the .mp4 files to the root directory with unique names
+        for mp4_file in *.mp4; do
+            unique_name="${prefix}.${mp4_file}"
+            mv "$mp4_file" "$root_dir/$unique_name"
+            echo "Moving $mp4_file to the original directory as $unique_name"
+        done
+    else
+        echo "Conversion failed in $dir"
+    fi
+
+    cd "$original_dir" || return 1
+    echo "Returning to the original directory"
+}
+
+# Main script starts here
+
+# Get the root directory
+root_dir=$(pwd)
+
+# Get the list of directories to process recursively, excluding the current directory (.)
+directories=($(find "$root_dir" -type d | grep -v "^$root_dir\$"))
+
+# Process each directory in parallel
+for dir in "${directories[@]}"; do
+    process_directory "$root_dir" "$dir" &
+done
+
+# Wait for all background processes to finish
+wait
+
+echo "Processing complete."
+
+=== exrmerge.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Function to display error and exit
+function error_exit {
+    kdialog --error "$1"
+    exit 1
+}
+
+# Ensure oiiotool and parallel are available
+command -v oiiotool &> /dev/null || error_exit "oiiotool could not be found. Please install OpenImageIO."
+command -v parallel &> /dev/null || error_exit "parallel could not be found. Please install GNU Parallel."
+
+# Create the merged directory if it doesn't exist
+mkdir -p merged
+
+# Find all _l.exr and _r.exr files in the current directory
+left_files=($(find . -maxdepth 1 -name '*_l.exr' | sort))
+right_files=($(find . -maxdepth 1 -name '*_r.exr' | sort))
+
+# Check if the number of left and right files is the same
+if [ "${#left_files[@]}" -ne "${#right_files[@]}" ]; then
+    error_exit "The number of left and right EXR files does not match."
+fi
+
+# Create a function for merging
+merge_images() {
+    left_file="$1"
+    right_file="$2"
+    base_name="${left_file%_l.exr}"
+    output_file="merged/${base_name##*/}.exr"
+    oiiotool "$left_file" "$right_file" --mosaic 2x1 --compression dwaa -o "$output_file"
+    echo "Merged $left_file and $right_file into $output_file"
+}
+
+export -f merge_images
+
+# Pair the left and right files correctly
+parallel --link merge_images ::: "${left_files[@]}" ::: "${right_files[@]}"
+
+=== exrtojpg.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Check if an input file is provided
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 input.exr"
+    exit 1
+fi
+
+# Input file
+INPUT="$1"
+
+# Check if input file exists
+if [ ! -f "$INPUT" ]; then
+    echo "Error: Input file '$INPUT' does not exist"
+    exit 1
+fi
+
+# Check if input file has .exr extension
+if [[ ! "$INPUT" =~ \.exr$ ]]; then
+    echo "Error: Input file must have .exr extension"
+    exit 1
+fi
+
+# Output file (replace .exr with .jpg)
+OUTPUT="${INPUT%.exr}.jpg"
+
+# Perform the conversion
+oiiotool "$INPUT" --colorconvert "role_scene_linear" "out_srgb" -o "$OUTPUT"
+
+# Check if conversion was successful
+if [ $? -eq 0 ]; then
+    echo "Successfully converted '$INPUT' to '$OUTPUT'"
+else
+    echo "Error: Conversion failed"
+    exit 1
+fi
+
+=== exrtomp4_dailies.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+# exrtomp4.sh – fast EXR → JPG → MP4 converter with metadata overlay by default
+
+export LC_NUMERIC=C
+set -euo pipefail
+
+PARALLEL_JOBS=""
+DEFAULT_FPS=25
+
+echo "🟢  Starting EXR-to-MP4 script …"
+
+# ──────────────────────── 1. Check tools and args ─────────────────────────
+command -v parallel >/dev/null || { echo "GNU parallel not found"; exit 1; }
+command -v oiiotool  >/dev/null || { echo "oiiotool not found";  exit 1; }
+command -v ffmpeg    >/dev/null || { echo "ffmpeg not found";    exit 1; }
+command -v identify  >/dev/null || { echo "identify not found";  exit 1; }
+
+fps=$DEFAULT_FPS
+while (( $# )); do
+  case "$1" in
+    -fps)  fps="$2"; shift 2 ;;
+    -res)  res="$2"; shift 2 ;;
+    -j)    PARALLEL_JOBS="$2"; shift 2 ;;
+    --)    shift; break ;;
+    *)     echo "Unknown flag $1"; exit 1 ;;
+  esac
+done
+
+# ──────────────────────── 2. EXR discovery ─────────────────────────────
+shopt -s nullglob
+exrs=( *.exr )
+(( ${#exrs[@]} )) || { echo "No EXR files found. Exiting."; exit 1; }
+
+first_exr=$(printf '%s\n' "${exrs[@]}" | sort -V | head -n1)
+res=$(identify -format "%wx%h" "$first_exr")
+width=${res%x*}; height=${res#*x}
+(( width  & 1 )) && ((width--))
+(( height & 1 )) && ((height--))
+res="${width}x${height}"
+
+echo "Using FPS=$fps , Resolution=$res"
+echo "Metadata overlay: enabled"
+
+# ──────────────────────── 3. Temp workspace ─────────────────────────────
+tmpdir=$(mktemp -d -p .)
+tmpdir=$(cd "$tmpdir" && pwd)  # absolute path
+export tmpdir
+echo "Temp dir: $tmpdir"
+
+# ──────────────────────── 4. Extract Metadata ───────────────────────────
+echo "🔍 Extracting metadata …"
+find . -maxdepth 1 -name '*.exr' | sort -V | \
+parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer '
+  f={}
+  info=$(oiiotool -info -v "$f")
+
+  frame=$(awk "/^    frame:/            {print \$2; exit}" <<<"$info")
+  fps_tag=$(awk "/^    FramesPerSecond:/  {print \$2; exit}" <<<"$info")
+  software=$(grep -oP "^    Software: \"\K.*(?=\")"       <<<"$info")
+  host=$(grep -oP "^    HostComputer: \"\K.*(?=\")"     <<<"$info")
+  datetime=$(grep -oP "^    DateTime: \"\K.*(?=\")"      <<<"$info")
+  mem=$(grep -oP "^    renderMemory_s: \"\K.*(?=\")"     <<<"$info")
+  comp=$(grep -oP "^    compression: \"\K.*(?=\")"       <<<"$info")
+  colorspace=$(grep -oP "^    oiio:ColorSpace: \"\K.*(?=\")" <<<"$info")
+  rt_sec=$(grep -oP "^    renderTime: \K[0-9.]+"         <<<"$info" || echo 0)
+  rt_hms=$(grep -oP "^    renderTime_s: \"\K.*(?=\")"    <<<"$info")
+
+  gpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 1p)
+  gpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 1p)
+  cpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 2p)
+  cpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 2p)
+
+  printf "%s|%s|%s|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|%s|%s|\"%s\"|%s|\"%s\"|%s\n" \
+    "$f" "$frame" "$fps_tag" \
+    "$software" "$host" "$datetime" \
+    "$mem" "$comp" "$colorspace" \
+    "$rt_sec" "$rt_hms" \
+    "$gpu_label" "$gpu_pct" \
+    "$cpu_label" "$cpu_pct"
+' > "$tmpdir/metadata.txt"
+
+total_rt_sec=$(awk -F'|' '{sum+=$10} END{printf "%.4f",sum}' "$tmpdir/metadata.txt")
+printf -v total_rt_hms '%02d:%02d:%05.2f' \
+        $(awk -v t="$total_rt_sec" 'BEGIN{h=int(t/3600); m=int((t%3600)/60); s=t%60; print h,m,s}')
+echo "⏱  Total render time: $total_rt_hms"
+
+# ──────────────────────── 5. EXR → JPG Conversion ────────────────────────
+echo "🎨 Converting EXRs to JPGs …"
+cat "$tmpdir/metadata.txt" | sort -V | \
+parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --colsep '\|' --halt soon,fail=1 --line-buffer '
+  f={1}
+  fbase=${f#./}; fb=${fbase%.exr}
+  frame={2}; fps_tag={3}; software={4}; host={5}; datetime={6};
+  mem={7}; comp={8}; colorspace={9}; rth={11};
+  gpu_label={12}; gpu_pct={13}; cpu_label={14}; cpu_pct={15};
+
+  oiiotool "$f" --ch "R,G,B" \
+    --colorconvert "ACES - ACEScg" "Output - sRGB" \
+    --text:x=40:y=40:size=28 "Frame: ${frame:-N/A}   FPS: ${fps_tag:-'"$fps"'}" \
+    --text:x=40:y=80:size=28  "RenderTime: ${rth:-N/A}" \
+    --text:x=40:y=120:size=28 "Software: ${software:-Unknown}" \
+    --text:x=40:y=160:size=28 "Host: ${host:-Unknown}" \
+    --text:x=40:y=200:size=28 "Mem: ${mem:-?}   Comp: ${comp:-?}" \
+    --text:x=40:y=240:size=28 "ColorSpace: ${colorspace:-?}" \
+    --text:x=40:y=280:size=28 "Date: ${datetime:-?}" \
+    --text:x=40:y=320:size=28 "GPU: ${gpu_label:-N/A} (${gpu_pct:-0}%)" \
+    --text:x=40:y=360:size=28 "CPU: ${cpu_label:-N/A} (${cpu_pct:-0}%)" \
+    --text:x=40:y=400:size=28 "TotalRender: '"$total_rt_hms"'" \
+    -o "$tmpdir/${fb}_converted.jpg"
+'
+
+# ───────────────────────── 6. Assemble MP4 ────────────────────────────────
+echo "📜  Preparing list for FFmpeg …"
+ls "$tmpdir"/*_converted.jpg | sort -V \
+  | sed "s|^|file '|;s|$|'|" > "$tmpdir/files.txt"
+
+out_base=$(basename "$first_exr" .exr | sed -E 's/\.[0-9]+$//')
+out_mp4="${out_base}.mp4"
+
+echo "🎞  Encoding MP4 → $out_mp4"
+ffmpeg -y -loglevel error -f concat -safe 0 -i "$tmpdir/files.txt" \
+       -c:v libx264 -pix_fmt yuv420p -r "$fps" -s "$res" \
+       "$tmpdir/$out_mp4"
+
+# ───────────────────────── 7. Cleanup ────────────────────────────────────
+mv "$tmpdir/$out_mp4" .
+rm -rf "$tmpdir"
+
+echo "✅  Done – output is $out_mp4"
+
+
+=== exrtomp4.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+# exrtomp4.sh – fast EXR → JPG → MP4 converter with optional metadata overlay
+
+export LC_NUMERIC=C
+set -euo pipefail
+
+PARALLEL_JOBS=""
+DEFAULT_FPS=25
+INCLUDE_META=false
+
+echo "🟢  Starting EXR-to-MP4 script …"
+
+# ──────────────────────── 1. Check tools and arguments ─────────────────────
+command -v parallel >/dev/null || { echo "GNU parallel not found"; exit 1; }
+command -v oiiotool  >/dev/null || { echo "oiiotool not found";  exit 1; }
+command -v ffmpeg    >/dev/null || { echo "ffmpeg not found";    exit 1; }
+command -v identify  >/dev/null || { echo "identify not found";  exit 1; }
+
+fps=$DEFAULT_FPS
+while (( $# )); do
+  case "$1" in
+    -fps)  fps="$2"; shift 2 ;;
+    -res)  res="$2"; shift 2 ;;
+    -j)    PARALLEL_JOBS="$2"; shift 2 ;;
+    -meta) INCLUDE_META=true; shift ;;
+    --)    shift; break ;;
+    *)     echo "Unknown flag $1"; exit 1 ;;
+  esac
+done
+
+# ──────────────────────── 2. EXR discovery ─────────────────────────────
+shopt -s nullglob
+exrs=( *.exr )
+(( ${#exrs[@]} )) || { echo "No EXR files found. Exiting."; exit 1; }
+
+first_exr=$(printf '%s\n' "${exrs[@]}" | sort -V | head -n1)
+res=$(identify -format "%wx%h" "$first_exr")
+width=${res%x*}; height=${res#*x}
+(( width  & 1 )) && ((width--))
+(( height & 1 )) && ((height--))
+res="${width}x${height}"
+
+echo "Using FPS=$fps , Resolution=$res"
+echo "Metadata overlay: $INCLUDE_META"
+
+# ───────────────────────── 3. Temp workspace ─────────────────────────────
+tmpdir=$(mktemp -d -p .)
+tmpdir=$(cd "$tmpdir" && pwd)    # absolute path
+export tmpdir
+echo "Temp dir: $tmpdir"
+
+# ───────────────────────── 4. Optional Metadata ──────────────────────────
+if $INCLUDE_META; then
+  echo "🔍 Extracting metadata …"
+  find . -maxdepth 1 -name '*.exr' | sort -V | \
+  parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer '
+    f={}
+    info=$(oiiotool -info -v "$f")
+
+    frame=$(awk "/^    frame:/            {print \$2; exit}" <<<"$info")
+    fps_tag=$(awk "/^    FramesPerSecond:/  {print \$2; exit}" <<<"$info")
+    software=$(grep -oP "^    Software: \"\K.*(?=\")"       <<<"$info")
+    host=$(grep -oP "^    HostComputer: \"\K.*(?=\")"     <<<"$info")
+    datetime=$(grep -oP "^    DateTime: \"\K.*(?=\")"      <<<"$info")
+    mem=$(grep -oP "^    renderMemory_s: \"\K.*(?=\")"     <<<"$info")
+    comp=$(grep -oP "^    compression: \"\K.*(?=\")"       <<<"$info")
+    colorspace=$(grep -oP "^    oiio:ColorSpace: \"\K.*(?=\")" <<<"$info")
+    rt_sec=$(grep -oP "^    renderTime: \K[0-9.]+"         <<<"$info" || echo 0)
+    rt_hms=$(grep -oP "^    renderTime_s: \"\K.*(?=\")"    <<<"$info")
+
+    gpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 1p)
+    gpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 1p)
+    cpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 2p)
+    cpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 2p)
+
+    printf "%s|%s|%s|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|%s|%s|\"%s\"|%s|\"%s\"|%s\n" \
+      "$f" "$frame" "$fps_tag" \
+      "$software" "$host" "$datetime" \
+      "$mem" "$comp" "$colorspace" \
+      "$rt_sec" "$rt_hms" \
+      "$gpu_label" "$gpu_pct" \
+      "$cpu_label" "$cpu_pct"
+  ' > "$tmpdir/metadata.txt"
+
+  total_rt_sec=$(awk -F'|' '{sum+=$10} END{printf "%.4f",sum}' "$tmpdir/metadata.txt")
+  printf -v total_rt_hms '%02d:%02d:%05.2f' \
+          $(awk -v t="$total_rt_sec" 'BEGIN{h=int(t/3600); m=int((t%3600)/60); s=t%60; print h,m,s}')
+  echo "⏱  Total render time: $total_rt_hms"
+fi
+
+# ──────────────────── 5. EXR → JPG Conversion ───────────────────────────
+echo "🎨 Converting EXRs to JPGs …"
+if $INCLUDE_META; then
+  cat "$tmpdir/metadata.txt" | sort -V | \
+  parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --colsep '\|' --halt soon,fail=1 --line-buffer '
+    f={1}; frame={2}; fps_tag={3}; software={4}; host={5}; datetime={6};
+    mem={7}; comp={8}; colorspace={9}; rth={11};
+    gpu_label={12}; gpu_pct={13}; cpu_label={14}; cpu_pct={15};
+
+    fbase=${f#./}; fb=${fbase%.exr}
+
+    oiiotool "$f" --ch "R,G,B" \
+      --colorconvert "ACES - ACEScg" "Output - sRGB" \
+      --text:x=40:y=40:size=28 "Frame: ${frame:-N/A}   FPS: ${fps_tag:-'"$fps"'}" \
+      --text:x=40:y=80:size=28  "RenderTime: ${rth:-N/A}" \
+      --text:x=40:y=120:size=28 "Software: ${software:-Unknown}" \
+      --text:x=40:y=160:size=28 "Host: ${host:-Unknown}" \
+      --text:x=40:y=200:size=28 "Mem: ${mem:-?}   Comp: ${comp:-?}" \
+      --text:x=40:y=240:size=28 "ColorSpace: ${colorspace:-?}" \
+      --text:x=40:y=280:size=28 "Date: ${datetime:-?}" \
+      --text:x=40:y=320:size=28 "GPU: ${gpu_label:-N/A} (${gpu_pct:-0}%)" \
+      --text:x=40:y=360:size=28 "CPU: ${cpu_label:-N/A} (${cpu_pct:-0}%)" \
+      --text:x=40:y=400:size=28 "TotalRender: '"$total_rt_hms"'" \
+      -o "$tmpdir/${fb}_converted.jpg"
+  '
+else
+  find . -maxdepth 1 -name '*.exr' | sort -V | \
+  parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer '
+    f={}
+    fbase=${f#./}; fb=${fbase%.exr}
+    oiiotool "$f" --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" \
+      -o "$tmpdir/${fb}_converted.jpg"
+  '
+fi
+
+# ──────────────────────── 6. Assemble MP4 ────────────────────────────────
+echo "📜  Preparing list for FFmpeg …"
+ls "$tmpdir"/*_converted.jpg | sort -V \
+  | sed "s|^|file '|;s|$|'|" > "$tmpdir/files.txt"
+
+out_base=$(basename "$first_exr" .exr | sed -E 's/\.[0-9]+$//')
+out_mp4="${out_base}.mp4"
+
+echo "🎞  Encoding MP4 → $out_mp4"
+ffmpeg -y -loglevel error -f concat -safe 0 -i "$tmpdir/files.txt" \
+       -c:v libx264 -pix_fmt yuv420p -r "$fps" -s "$res" \
+       "$tmpdir/$out_mp4"
+
+# ───────────────────────── 7. Cleanup ────────────────────────────────────
+mv "$tmpdir/$out_mp4" .
+rm -rf "$tmpdir"
+
+echo "✅  Done – output is $out_mp4"
+
+
+=== exrtoprores422.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# exrtoprores422.sh – fast EXR → PNG → ProRes422 MOV converter with optional metadata overlay
+
+export LC_NUMERIC=C
+set -euo pipefail
+
+PARALLEL_JOBS=""
+DEFAULT_FPS=25
+INCLUDE_META=false
+
+echo "🟢  Starting EXR-to-MOV script …"
+
+# ──────────────────────── 1. Check tools and arguments ─────────────────────
+for tool in parallel oiiotool ffmpeg identify; do
+  command -v "$tool" >/dev/null || { echo "$tool not found"; exit 1; }
+done
+
+fps=$DEFAULT_FPS
+while (( $# )); do
+  case "$1" in
+    -fps)  fps="$2"; shift 2 ;;
+    -res)  res="$2"; shift 2 ;;
+    -j)    PARALLEL_JOBS="$2"; shift 2 ;;
+    -meta) INCLUDE_META=true; shift ;;
+    --)    shift; break ;;
+    *)     echo "Unknown flag $1"; exit 1 ;;
+  esac
+done
+
+# ──────────────────────── 2. EXR discovery ─────────────────────────────
+shopt -s nullglob
+exrs=( *.exr )
+(( ${#exrs[@]} )) || { echo "No EXR files found. Exiting."; exit 1; }
+
+first_exr=$(printf '%s\n' "${exrs[@]}" | sort -V | head -n1)
+if [ -z "${res-}" ]; then
+  res=$(identify -format "%wx%h" "$first_exr")
+fi
+width=${res%x*}; height=${res#*x}
+(( width  &= ~1 ))
+(( height &= ~1 ))
+res="${width}x${height}"
+
+echo "First EXR: $first_exr"
+echo "Using FPS=$fps , Resolution=$res"
+echo "Metadata overlay: $INCLUDE_META"
+
+# ───────────────────────── 3. Temp workspace ─────────────────────────────
+tmpdir=$(mktemp -d -p .)
+tmpdir=$(cd "$tmpdir" && pwd)  # absolute path
+export tmpdir
+echo "Temp dir: $tmpdir"
+
+# ───────────────────────── 4. Optional Metadata ──────────────────────────
+if $INCLUDE_META; then
+  echo "🔍 Extracting metadata …"
+  find . -maxdepth 1 -name '*.exr' | sort -V | \
+  parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer '
+    f={}
+    info=$(oiiotool -info -v "$f")
+
+    frame=$(awk "/^    frame:/            {print \$2; exit}" <<<"$info")
+    fps_tag=$(awk "/^    FramesPerSecond:/  {print \$2; exit}" <<<"$info")
+    software=$(grep -oP "^    Software: \"\K.*(?=\")"       <<<"$info")
+    host=$(grep -oP "^    HostComputer: \"\K.*(?=\")"     <<<"$info")
+    datetime=$(grep -oP "^    DateTime: \"\K.*(?=\")"      <<<"$info")
+    mem=$(grep -oP "^    renderMemory_s: \"\K.*(?=\")"     <<<"$info")
+    comp=$(grep -oP "^    compression: \"\K.*(?=\")"       <<<"$info")
+    colorspace=$(grep -oP "^    oiio:ColorSpace: \"\K.*(?=\")" <<<"$info")
+    rt_sec=$(grep -oP "^    renderTime: \K[0-9.]+"         <<<"$info" || echo 0)
+    rt_hms=$(grep -oP "^    renderTime_s: \"\K.*(?=\")"    <<<"$info")
+
+    gpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 1p)
+    gpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 1p)
+    cpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 2p)
+    cpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 2p)
+
+    printf "%s|%s|%s|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|%s|%s|\"%s\"|%s|\"%s\"|%s\n" \
+      "$f" "$frame" "$fps_tag" \
+      "$software" "$host" "$datetime" \
+      "$mem" "$comp" "$colorspace" \
+      "$rt_sec" "$rt_hms" \
+      "$gpu_label" "$gpu_pct" \
+      "$cpu_label" "$cpu_pct"
+  ' > "$tmpdir/metadata.txt"
+
+  total_rt_sec=$(awk -F'|' '{sum+=$10} END{printf "%.4f",sum}' "$tmpdir/metadata.txt")
+  printf -v total_rt_hms '%02d:%02d:%05.2f' \
+          $(awk -v t="$total_rt_sec" 'BEGIN{h=int(t/3600); m=int((t%3600)/60); s=t%60; print h,m,s}')
+  echo "⏱  Total render time: $total_rt_hms"
+fi
+
+# ──────────────────── 5. EXR → PNG Conversion ───────────────────────────
+echo "🎨 Converting ${#exrs[@]} EXRs to PNGs …"
+PAR_CMD=( parallel --halt soon,fail=1 --line-buffer )
+[ -n "$PARALLEL_JOBS" ] && PAR_CMD+=( -j "$PARALLEL_JOBS" )
+
+if $INCLUDE_META; then
+  cat "$tmpdir/metadata.txt" | sort -V | \
+  "${PAR_CMD[@]}" --colsep '\|' '
+    f={1}; frame={2}; fps_tag={3}; software={4}; host={5}; datetime={6};
+    mem={7}; comp={8}; colorspace={9}; rt_sec={10}; rt_hms={11};
+    gpu_label={12}; gpu_pct={13}; cpu_label={14}; cpu_pct={15};
+    
+    name=${f##*/}; base=${name%.exr}
+    out="'"$tmpdir"'/${base}_converted.png"
+    
+    oiiotool "$f" --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" \
+      --text:x=40:y=40:size=28 "Frame: ${frame:-N/A}   FPS: ${fps_tag:-'"$fps"'}" \
+      --text:x=40:y=80:size=28  "RenderTime: ${rt_hms:-N/A}" \
+      --text:x=40:y=120:size=28 "Software: ${software:-Unknown}" \
+      --text:x=40:y=160:size=28 "Host: ${host:-Unknown}" \
+      --text:x=40:y=200:size=28 "Mem: ${mem:-?}   Comp: ${comp:-?}" \
+      --text:x=40:y=240:size=28 "ColorSpace: ${colorspace:-?}" \
+      --text:x=40:y=280:size=28 "Date: ${datetime:-?}" \
+      --text:x=40:y=320:size=28 "GPU: ${gpu_label:-N/A} (${gpu_pct:-0}%)" \
+      --text:x=40:y=360:size=28 "CPU: ${cpu_label:-N/A} (${cpu_pct:-0}%)" \
+      --text:x=40:y=400:size=28 "TotalRender: '"$total_rt_hms"'" \
+      -o "$out"
+  '
+else
+  printf "%s\n" "${exrs[@]}" | sort -V | \
+  "${PAR_CMD[@]}" '
+    f={}; name=${f##*/}; base=${name%.exr}
+    oiiotool "$f" --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" \
+      -o "'"$tmpdir"'/""${base}_converted.png"
+  '
+fi
+
+# ───────────────────────── 6. Assemble MOV ────────────────────────────────
+pushd "$tmpdir" >/dev/null
+echo "📜  Preparing list for FFmpeg …"
+printf "file '%s'\n" *_converted.png | sort -V > files.txt
+
+out_base=$(basename "$first_exr" .exr | sed -E 's/\.[0-9]+$//')
+out_mov="${out_base}_prores422.mov"
+echo "🎞  Encoding ProRes 422 MOV → $out_mov"
+
+ffmpeg -y -loglevel error \
+       -r "$fps" \
+       -f concat -safe 0 -i files.txt \
+       -c:v prores_ks -profile:v 2 -pix_fmt yuv422p10le \
+       -s "$res" \
+       "$out_mov" || { echo "ERROR: FFmpeg failed"; exit 1; }
+
+popd >/dev/null
+
+# ───────────────────────── 7. Cleanup ────────────────────────────────────
+mv "$tmpdir/$out_mov" .
+rm -rf "$tmpdir"
+echo "✅  Done – output is $out_mov"
+
+=== exrtoprores444.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# exrtoprores444.sh – fast EXR → PNG → ProRes444 MOV converter with optional metadata overlay
+
+export LC_NUMERIC=C
+set -euo pipefail
+
+PARALLEL_JOBS=""
+DEFAULT_FPS=25
+INCLUDE_META=false
+
+echo "🟢  Starting EXR-to-MOV script …"
+
+# ──────────────────────── 1. Check tools and arguments ─────────────────────
+for tool in parallel oiiotool ffmpeg identify; do
+  command -v "$tool" >/dev/null || { echo "$tool not found"; exit 1; }
+done
+
+fps=$DEFAULT_FPS
+while (( $# )); do
+  case "$1" in
+    -fps)  fps="$2"; shift 2 ;;
+    -res)  res="$2"; shift 2 ;;
+    -j)    PARALLEL_JOBS="$2"; shift 2 ;;
+    -meta) INCLUDE_META=true; shift ;;
+    --)    shift; break ;;
+    *)     echo "Unknown flag $1"; exit 1 ;;
+  esac
+done
+
+# ──────────────────────── 2. EXR discovery ─────────────────────────────
+shopt -s nullglob
+exrs=( *.exr )
+(( ${#exrs[@]} )) || { echo "No EXR files found. Exiting."; exit 1; }
+
+first_exr=$(printf '%s\n' "${exrs[@]}" | sort -V | head -n1)
+if [ -z "${res-}" ]; then
+  res=$(identify -format "%wx%h" "$first_exr")
+fi
+width=${res%x*}; height=${res#*x}
+(( width  &= ~1 ))
+(( height &= ~1 ))
+res="${width}x${height}"
+
+echo "First EXR: $first_exr"
+echo "Using FPS=$fps , Resolution=$res"
+echo "Metadata overlay: $INCLUDE_META"
+
+# ───────────────────────── 3. Temp workspace ─────────────────────────────
+tmpdir=$(mktemp -d -p .)
+tmpdir=$(cd "$tmpdir" && pwd)  # absolute path
+export tmpdir
+echo "Temp dir: $tmpdir"
+
+# ───────────────────────── 4. Optional Metadata ──────────────────────────
+if $INCLUDE_META; then
+  echo "🔍 Extracting metadata …"
+  find . -maxdepth 1 -name '*.exr' | sort -V | \
+  parallel ${PARALLEL_JOBS:+-j "$PARALLEL_JOBS"} --halt soon,fail=1 --line-buffer '
+    f={}
+    info=$(oiiotool -info -v "$f")
+
+    frame=$(awk "/^    frame:/            {print \$2; exit}" <<<"$info")
+    fps_tag=$(awk "/^    FramesPerSecond:/  {print \$2; exit}" <<<"$info")
+    software=$(grep -oP "^    Software: \"\K.*(?=\")"       <<<"$info")
+    host=$(grep -oP "^    HostComputer: \"\K.*(?=\")"     <<<"$info")
+    datetime=$(grep -oP "^    DateTime: \"\K.*(?=\")"      <<<"$info")
+    mem=$(grep -oP "^    renderMemory_s: \"\K.*(?=\")"     <<<"$info")
+    comp=$(grep -oP "^    compression: \"\K.*(?=\")"       <<<"$info")
+    colorspace=$(grep -oP "^    oiio:ColorSpace: \"\K.*(?=\")" <<<"$info")
+    rt_sec=$(grep -oP "^    renderTime: \K[0-9.]+"         <<<"$info" || echo 0)
+    rt_hms=$(grep -oP "^    renderTime_s: \"\K.*(?=\")"    <<<"$info")
+
+    gpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 1p)
+    gpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 1p)
+    cpu_label=$(grep -oP "\"xpu_device_label\":\"\K[^\"]+"    <<<"$info" | sed -n 2p)
+    cpu_pct=$(grep -oP "\"xpu_device_contrib\":\K[0-9.]+" <<<"$info" | sed -n 2p)
+
+    printf "%s|%s|%s|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|\"%s\"|%s|%s|\"%s\"|%s|\"%s\"|%s\n" \
+      "$f" "$frame" "$fps_tag" \
+      "$software" "$host" "$datetime" \
+      "$mem" "$comp" "$colorspace" \
+      "$rt_sec" "$rt_hms" \
+      "$gpu_label" "$gpu_pct" \
+      "$cpu_label" "$cpu_pct"
+  ' > "$tmpdir/metadata.txt"
+
+  total_rt_sec=$(awk -F'|' '{sum+=$10} END{printf "%.4f",sum}' "$tmpdir/metadata.txt")
+  printf -v total_rt_hms '%02d:%02d:%05.2f' \
+          $(awk -v t="$total_rt_sec" 'BEGIN{h=int(t/3600); m=int((t%3600)/60); s=t%60; print h,m,s}')
+  echo "⏱  Total render time: $total_rt_hms"
+fi
+
+# ──────────────────── 5. EXR → PNG Conversion ───────────────────────────
+echo "🎨 Converting ${#exrs[@]} EXRs to PNGs …"
+PAR_CMD=( parallel --halt soon,fail=1 --line-buffer )
+[ -n "$PARALLEL_JOBS" ] && PAR_CMD+=( -j "$PARALLEL_JOBS" )
+
+if $INCLUDE_META; then
+  cat "$tmpdir/metadata.txt" | sort -V | \
+  "${PAR_CMD[@]}" --colsep '\|' '
+    f={1}; frame={2}; fps_tag={3}; software={4}; host={5}; datetime={6};
+    mem={7}; comp={8}; colorspace={9}; rt_sec={10}; rt_hms={11};
+    gpu_label={12}; gpu_pct={13}; cpu_label={14}; cpu_pct={15};
+    
+    name=${f##*/}; base=${name%.exr}
+    out="'"$tmpdir"'/${base}_converted.png"
+    
+    oiiotool "$f" --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" \
+      --text:x=40:y=40:size=28 "Frame: ${frame:-N/A}   FPS: ${fps_tag:-'"$fps"'}" \
+      --text:x=40:y=80:size=28  "RenderTime: ${rt_hms:-N/A}" \
+      --text:x=40:y=120:size=28 "Software: ${software:-Unknown}" \
+      --text:x=40:y=160:size=28 "Host: ${host:-Unknown}" \
+      --text:x=40:y=200:size=28 "Mem: ${mem:-?}   Comp: ${comp:-?}" \
+      --text:x=40:y=240:size=28 "ColorSpace: ${colorspace:-?}" \
+      --text:x=40:y=280:size=28 "Date: ${datetime:-?}" \
+      --text:x=40:y=320:size=28 "GPU: ${gpu_label:-N/A} (${gpu_pct:-0}%)" \
+      --text:x=40:y=360:size=28 "CPU: ${cpu_label:-N/A} (${cpu_pct:-0}%)" \
+      --text:x=40:y=400:size=28 "TotalRender: '"$total_rt_hms"'" \
+      -o "$out"
+  '
+else
+  printf "%s\n" "${exrs[@]}" | sort -V | \
+  "${PAR_CMD[@]}" '
+    f={}; name=${f##*/}; base=${name%.exr}
+    oiiotool "$f" --ch "R,G,B" --colorconvert "ACES - ACEScg" "Output - sRGB" \
+      -o "'"$tmpdir"'/""${base}_converted.png"
+  '
+fi
+
+# ───────────────────────── 6. Assemble MOV ────────────────────────────────
+pushd "$tmpdir" >/dev/null
+echo "📜  Preparing list for FFmpeg …"
+printf "file '%s'\n" *_converted.png | sort -V > files.txt
+
+out_base=$(basename "$first_exr" .exr | sed -E 's/\.[0-9]+$//')
+out_mov="${out_base}_prores444.mov"
+echo "🎞  Encoding ProRes 444 MOV → $out_mov"
+
+ffmpeg -y -loglevel error \
+       -r "$fps" \
+       -f concat -safe 0 -i files.txt \
+       -c:v prores_ks -profile:v 4 -pix_fmt yuv444p10le \
+       -s "$res" \
+       "$out_mov" || { echo "ERROR: FFmpeg failed"; exit 1; }
+
+popd >/dev/null
+
+# ───────────────────────── 7. Cleanup ────────────────────────────────────
+mv "$tmpdir/$out_mov" .
+rm -rf "$tmpdir"
+echo "✅  Done – output is $out_mov"
+
+
+=== exrtotiff_ProPhotoRGB.sh ===
+#!/bin/bash
+
+# Converts a scene-linear EXR into a 16-bit, gamma-encoded ProPhoto RGB TIFF
+# (with embedded ProPhoto ICC) so GIMP will display it correctly.
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 input.exr"
+    exit 1
+fi
+
+INPUT="$1"
+
+# Verify input exists and has .exr extension
+if [ ! -f "$INPUT" ]; then
+    echo "Error: '$INPUT' does not exist"
+    exit 1
+fi
+if [[ ! "$INPUT" =~ \.exr$ ]]; then
+    echo "Error: Input file must have .exr extension"
+    exit 1
+fi
+
+# Paths to ICC profiles (adjust if yours live elsewhere)
+SRGB_ICC="/usr/share/color/icc/sRGB.icc"
+PROPHOTO_ICC="/usr/share/color/icc/ProPhoto.icc"
+
+# Verify ICC profiles exist
+if [ ! -f "$SRGB_ICC" ] || [ ! -f "$PROPHOTO_ICC" ]; then
+    echo "Error: Cannot find one or more ICC profiles:"
+    echo "  sRGB ICC:     $SRGB_ICC"
+    echo "  ProPhoto ICC: $PROPHOTO_ICC"
+    exit 1
+fi
+
+# Derive output filename (basename + _ProPhoto.tiff)
+BASENAME="${INPUT%.exr}"
+OUTPUT="${BASENAME}_ProPhoto.tiff"
+
+# Pipeline:
+# 1) role_scene_linear → out_srgb   (apply sRGB gamma)
+# 2) --iccread sRGB.icc             (tag buffer as sRGB)
+# 3) --colorconvert sRGB.icc→ProPhoto.icc
+# 4) --iccwrite ProPhoto.icc        (embed ProPhoto tag)
+# 5) -d uint16                      (force 16-bit)
+# 6) -o OUTPUT
+oiiotool "$INPUT" \
+    --colorconvert role_scene_linear out_srgb \
+    --iccread "$SRGB_ICC" \
+    --colorconvert "$SRGB_ICC" "$PROPHOTO_ICC" \
+    --iccwrite "$PROPHOTO_ICC" \
+    -d uint16 \
+    -o "$OUTPUT"
+
+if [ $? -eq 0 ]; then
+    echo "✅ Converted '$INPUT' → ProPhoto RGB (gamma-encoded, 16-bit) TIFF: '$OUTPUT'"
+else
+    echo "❌ Conversion failed"
+    exit 1
+fi
+
+
+=== exrtotiff.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Check if an input file is provided
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 input.exr"
+    exit 1
+fi
+
+# Input file
+INPUT="$1"
+
+# Check if input file exists
+if [ ! -f "$INPUT" ]; then
+    echo "Error: Input file '$INPUT' does not exist"
+    exit 1
+fi
+
+# Check if input file has .exr extension
+if [[ ! "$INPUT" =~ \.exr$ ]]; then
+    echo "Error: Input file must have .exr extension"
+    exit 1
+fi
+
+# Output file (replace .exr with .tiff)
+OUTPUT="${INPUT%.exr}.tiff"
+
+# Perform the conversion
+oiiotool "$INPUT" --colorconvert "role_scene_linear" "out_srgb" -o "$OUTPUT"
+
+# Check if conversion was successful
+if [ $? -eq 0 ]; then
+    echo "Successfully converted '$INPUT' to '$OUTPUT'"
+else
+    echo "Error: Conversion failed"
+    exit 1
+fi
+
+=== extractallstills.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Check for correct usage
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <directory_path>"
+    exit 1
+fi
+
+# Root directory path
+root_dir="$1"
+
+# Find all video files and loop over them
+find "$root_dir" -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.avi" \) | while read -r input_video; do
+    # Extract the video filename without extension
+    filename=$(basename -- "$input_video")
+    filename_noext="${filename%.*}"
+    
+    # Get the directory of the current video
+    video_dir=$(dirname "$input_video")
+    
+    # Create output directory specific to each video in the same folder as the video
+    output_dir="$video_dir/frame_$filename_noext"
+    mkdir -p "$output_dir"
+
+    # Get the total duration of the video in seconds
+    duration=$(ffprobe -i "$input_video" -show_entries format=duration -v quiet -of csv="p=0")
+
+    # Interval at which to extract frames (you might want to adjust this)
+    interval=5
+
+    # Loop through the video and extract 3 frames at each specified interval
+    for i in $(seq 0 $interval $(printf "%.0f\n" "$duration")); do
+        for offset in -1 0 1; do  # Three frames: one before, one at, and one after the time i
+            time_point=$((i + offset))
+            if (( time_point >= 0 )); then
+                ffmpeg -ss $time_point -i "$input_video" -vf "select='eq(n\,$time_point)'" -vframes 1 "$output_dir/frame_$(printf "%04d" $time_point).jpg"
+            fi
+        done
+    done
+
+    echo "Still frames for $input_video have been saved to $output_dir."
+done
+
+=== extractstills.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Default sensitivity level
+sensitivity=7
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s)
+            shift
+            sensitivity=$1
+            if ! [[ "$sensitivity" =~ ^[0-9]+$ ]] || [ "$sensitivity" -lt 0 ] || [ "$sensitivity" -gt 10 ]; then
+                echo "Sensitivity must be a number between 0 and 10."
+                exit 1
+            fi
+            ;;
+        *)
+            if [[ -z "$input_video" ]]; then
+                input_video="$1"
+            else
+                echo "Unexpected argument: $1"
+                exit 1
+            fi
+            ;;
+    esac
+    shift
+done
+
+if [[ -z "$input_video" ]]; then
+    echo "Usage: $0 <input_video_file> [-s <sensitivity 0-10>]"
+    exit 1
+fi
+
+# Create the output directory named "frames" if it doesn't exist
+output_dir="frames"
+mkdir -p "$output_dir"
+
+# Get the total duration of the video in seconds
+duration=$(ffprobe -i "$input_video" -show_entries format=duration -v quiet -of csv="p=0")
+duration_seconds=$(printf "%.0f" "$duration")
+
+# Define interval based on sensitivity
+interval=$((10 - sensitivity + 1))
+
+# Loop through the video and extract frames at the specified interval
+for ((i=0; i<=duration_seconds; i+=interval)); do
+    ffmpeg -ss $i -i "$input_video" -vframes 1 "$output_dir/frame_$(printf "%04d" $i).jpg"
+done
+
+echo "Still frames have been saved to $output_dir."
+
+
+=== folder.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+temp_file=$(mktemp)
+
+while IFS= read -r line; do
+    [ -z "$line" ] && break
+    echo "$line" >> "$temp_file"
+done
+
+declare -A paths
+current_depth=0
+
+process_line() {
+    local line=$1
+    [[ -z "$line" || $line =~ ^\.$ ]] && return
+    
+    # Calculate depth from indentation
+    local spaces=$(echo "$line" | grep -o '^[ │]*' | wc -c)
+    local depth=$((spaces / 4))
+    
+    # Extract directory name
+    if [[ $line =~ [├└]──[[:space:]](.+)/?$ ]]; then
+        local dir="${BASH_REMATCH[1]}"
+        dir="${dir%/}"
+        
+        # Build path
+        if [ $depth -eq 0 ]; then
+            paths[$depth]="$dir"
+        else
+            paths[$depth]="${paths[$((depth-1))]}/$dir"
+        fi
+        
+        # Create directory if not a placeholder
+        if [[ $dir != "..." ]]; then
+            echo "Creating: ${paths[$depth]}"
+            mkdir -p "${paths[$depth]}"
+        fi
+    fi
+}
+
+while IFS= read -r line; do
+    process_line "$line"
+done < "$temp_file"
+
+rm "$temp_file"
+echo "Done"
+
+=== formatjson.sh ===
+#!/bin/bash
+
+# Check if a file is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 input.json"
+    exit 1
+fi
+
+# Input JSON file
+input_file="$1"
+
+# Output file with "_formatted.txt" suffix
+output_file="${input_file%.json}_formatted.txt"
+
+# Extract text, remove timestamps and other info, and add line breaks
+jq -r '.chunks[].text' "$input_file" > "$output_file"
+
+echo "Formatted text has been saved to $output_file"
+
+=== formattxt.sh ===
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 input_file.txt"
+    exit 1
+fi
+
+# Get the input filename and create the output filename
+input_file="$1"
+output_file="${input_file%.txt}_formatted.txt"
+
+# Use sed to remove all occurrences of the timestamps (including brackets) and save the output to the new file
+sed 's/\[[^]]*\]//g' "$input_file" > "$output_file"
+
+# Inform the user that the file has been processed
+echo "Formatted file saved as $output_file"
+
+=== gif.sh ===
+#!/bin/bash
+
+# Create the gif directory if it doesn't exist
+mkdir -p gif
+
+# Set the desired frames per second for the GIF
+FPS=15
+
+# Check if any arguments are provided
+if [ "$#" -gt 0 ]; then
+    # Process each file provided as an argument
+    for i in "$@"; do
+        # Create a temporary palette file
+        palette=$(mktemp /tmp/palette.XXXXXX.png)
+        # Generate a palette from the input video
+        ffmpeg -y -i "$i" -vf "fps=$FPS,scale=trunc(iw/2)*2:trunc(ih/2)*2,palettegen" "$palette"
+        # Use the generated palette to create the GIF
+        ffmpeg -y -i "$i" -i "$palette" -filter_complex "fps=$FPS,scale=trunc(iw/2)*2:trunc(ih/2)*2[x];[x][1:v]paletteuse" "./gif/$(basename "${i%.*}").gif"
+        rm "$palette"
+    done
+else
+    # Process all files in the current directory
+    for i in *.*; do
+        palette=$(mktemp /tmp/palette.XXXXXX.png)
+        ffmpeg -y -i "$i" -vf "fps=$FPS,scale=trunc(iw/2)*2:trunc(ih/2)*2,palettegen" "$palette"
+        ffmpeg -i "$i" -i "$palette" -filter_complex "fps=$FPS,scale=trunc(iw/2)*2:trunc(ih/2)*2[x];[x][1:v]paletteuse" "./gif/$(basename "${i%.*}").gif"
+        rm "$palette"
+    done
+fi
+
+exit
+
+
+=== gif_small.sh ===
+#!/bin/bash
+
+# Create the gif directory if it doesn't exist
+mkdir -p gif
+
+# Set the desired frames per second for the GIF
+FPS=24
+
+# Check if any arguments are provided
+if [ "$#" -gt 0 ]; then
+    # Process each file provided as an argument
+    for i in "$@"; do
+        # Create a temporary palette file
+        palette=$(mktemp /tmp/palette.XXXXXX.png)
+        # Generate a palette from the input video with reduced resolution and aggressive compression
+        ffmpeg -y -i "$i" -vf "fps=$FPS,scale=trunc(iw/4)*2:trunc(ih/4)*2,palettegen=max_colors=64" "$palette"
+        # Use the generated palette to create the GIF
+        ffmpeg -y -i "$i" -i "$palette" -filter_complex "fps=$FPS,scale=trunc(iw/4)*2:trunc(ih/4)*2[x];[x][1:v]paletteuse" "./gif/$(basename "${i%.*}").gif"
+        rm "$palette"
+    done
+else
+    # Process all files in the current directory
+    for i in *.*; do
+        palette=$(mktemp /tmp/palette.XXXXXX.png)
+        ffmpeg -y -i "$i" -vf "fps=$FPS,scale=trunc(iw/4)*2:trunc(ih/4)*2,palettegen=max_colors=64" "$palette"
+        ffmpeg -y -i "$i" -i "$palette" -filter_complex "fps=$FPS,scale=trunc(iw/4)*2:trunc(ih/4)*2[x];[x][1:v]paletteuse" "./gif/$(basename "${i%.*}").gif"
+        rm "$palette"
+    done
+fi
+
+exit
+
+
+=== grid3_backup.sh ===
+#!/bin/bash
+
+# Directory where the grid videos will be stored
+output_dir="grids"
+
+# Create the output directory if it doesn't exist
+mkdir -p "$output_dir"
+
+# Get all MP4 files in the current directory
+mp4files=($(ls *.mp4))
+
+# Calculate how many videos will be created
+num_files=${#mp4files[@]}
+batches=$((num_files / 9))
+remainder=$((num_files % 9))
+
+# Process full 3x3 batches
+for ((batch=0; batch<batches; batch++)); do
+  filter_complex=""
+  input_files=""
+
+  for i in {0..8}; do
+    file_index=$((batch * 9 + i))
+    filename="${mp4files[$file_index]}"
+    input_files+="-i '${filename}' "
+    filter_complex+="[${i}:v]scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2[v$i];"
+  done
+
+  filter_complex+="[v0][v1][v2]hstack=inputs=3[top];"
+  filter_complex+="[v3][v4][v5]hstack=inputs=3[middle];"
+  filter_complex+="[v6][v7][v8]hstack=inputs=3[bottom];"
+  filter_complex+="[top][middle][bottom]vstack=inputs=3[v]"
+
+  output_file="${output_dir}/grid_$(printf "%02d" $((batch+1))).mp4"
+  ffmpeg_cmd="ffmpeg $input_files -filter_complex \"$filter_complex\" -map \"[v]\" -c:v libx264 -crf 23 -preset veryfast \"$output_file\""
+  eval "$ffmpeg_cmd"
+  echo "3x3 grid video $((batch+1)) has been created as $output_file"
+done
+
+# Handle remaining files for a smaller grid
+if [ $remainder -gt 0 ]; then
+  filter_complex=""
+  input_files=""
+  start_index=$((batches * 9))
+
+  for ((i=0; i<remainder; i++)); do
+    filename="${mp4files[$((start_index + i))]}"
+    input_files+="-i '${filename}' "
+    filter_complex+="[${i}:v]scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2[v$i];"
+  done
+
+  # Adjust the filter_complex string based on the number of remaining files
+  case $remainder in
+    1)
+      filter_complex+="[v0]null[v];"
+      ;;
+    2)
+      filter_complex+="[v0][v1]hstack=inputs=2[v];"
+      ;;
+    3)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[v];"
+      ;;
+    4)
+      filter_complex+="[v0][v1]hstack=inputs=2[top];[v2][v3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v];"
+      ;;
+    5)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v];"
+      ;;
+    6)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4][v5]hstack=inputs=3[bottom];[top][bottom]vstack=inputs=2[v];"
+      ;;
+    7)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4]hstack=inputs=2[middle];[v5][v6]hstack=inputs=2[bottom];[top][middle][bottom]vstack=inputs=3[v];"
+      ;;
+    8)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4][v5]hstack=inputs=3[middle];[v6][v7]hstack=inputs=2[bottom];[top][middle][bottom]vstack=inputs=3[v];"
+      ;;
+  esac
+
+  output_file="${output_dir}/grid_$(printf "%02d" $((batches+1))).mp4"
+  ffmpeg_cmd="ffmpeg $input_files -filter_complex \"$filter_complex\" -map \"[v]\" -c:v libx264 -crf 23 -preset veryfast \"$output_file\""
+  eval "$ffmpeg_cmd"
+  echo "Smaller grid video $(($batches+1)) has been created as $output_file"
+fi
+
+=== grid3.sh ===
+#!/bin/bash
+
+# Directory where the grid videos will be stored
+output_dir="grids"
+
+# Create the output directory if it doesn't exist
+mkdir -p "$output_dir"
+
+# Get all MP4 files in the current directory
+mp4files=($(ls *.mp4))
+
+# Calculate how many videos will be created
+num_files=${#mp4files[@]}
+batches=$((num_files / 9))
+remainder=$((num_files % 9))
+
+# Process full 3x3 batches
+for ((batch=0; batch<batches; batch++)); do
+  filter_complex=""
+  input_files=""
+
+  for i in {0..8}; do
+    file_index=$((batch * 9 + i))
+    filename="${mp4files[$file_index]}"
+    input_files+="-i '${filename}' "
+    filter_complex+="[${i}:v]scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2[v$i];"
+  done
+
+  filter_complex+="[v0][v1][v2]hstack=inputs=3[top];"
+  filter_complex+="[v3][v4][v5]hstack=inputs=3[middle];"
+  filter_complex+="[v6][v7][v8]hstack=inputs=3[bottom];"
+  filter_complex+="[top][middle][bottom]vstack=inputs=3[v]"
+
+  output_file="${output_dir}/grid_$(printf "%02d" $((batch+1))).mp4"
+  ffmpeg_cmd="ffmpeg $input_files -filter_complex \"$filter_complex\" -map \"[v]\" -c:v libx264 -crf 23 -preset veryfast \"$output_file\""
+  eval "$ffmpeg_cmd"
+  echo "3x3 grid video $((batch+1)) has been created as $output_file"
+done
+
+# Handle remaining files for a smaller grid
+if [ $remainder -gt 0 ]; then
+  filter_complex=""
+  input_files=""
+  start_index=$((batches * 9))
+
+  for ((i=0; i<remainder; i++)); do
+    filename="${mp4files[$((start_index + i))]}"
+    input_files+="-i '${filename}' "
+    filter_complex+="[${i}:v]scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2[v$i];"
+  done
+
+  # Adjust the filter_complex string based on the number of remaining files
+  case $remainder in
+    1)
+      filter_complex+="[v0]null[v];"
+      ;;
+    2)
+      filter_complex+="[v0][v1]hstack=inputs=2[v];"
+      ;;
+    3)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[v];"
+      ;;
+    4)
+      filter_complex+="[v0][v1]hstack=inputs=2[top];[v2][v3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v];"
+      ;;
+    5)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v];"
+      ;;
+    6)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4][v5]hstack=inputs=3[bottom];[top][bottom]vstack=inputs=2[v];"
+      ;;
+    7)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4]hstack=inputs=2[middle];[v5][v6]hstack=inputs=2[bottom];[top][middle][bottom]vstack=inputs=3[v];"
+      ;;
+    8)
+      filter_complex+="[v0][v1][v2]hstack=inputs=3[top];[v3][v4][v5]hstack=inputs=3[middle];[v6][v7]hstack=inputs=2[bottom];[top][middle][bottom]vstack=inputs=3[v];"
+      ;;
+  esac
+
+  output_file="${output_dir}/grid_$(printf "%02d" $((batches+1))).mp4"
+  ffmpeg_cmd="ffmpeg $input_files -filter_complex \"$filter_complex\" -map \"[v]\" -c:v libx264 -crf 23 -preset veryfast \"$output_file\""
+  eval "$ffmpeg_cmd"
+  echo "Smaller grid video $(($batches+1)) has been created as $output_file"
+fi
+
+=== grid_play.sh ===
+#!/bin/bash
+
+if [ "$#" -lt 1 ]; then
+    echo "Usage: $0 <video1> <video2> ... <videoN>"
+    exit 1
+fi
+
+# Number of video files
+NUM_VIDEOS=$#
+
+# Calculate grid dimensions (rows and columns)
+COLUMNS=$(echo "scale=0; sqrt($NUM_VIDEOS)" | bc)
+if [ $(($COLUMNS * $COLUMNS)) -lt $NUM_VIDEOS ]; then
+    COLUMNS=$(($COLUMNS + 1))
+fi
+ROWS=$(($NUM_VIDEOS / $COLUMNS))
+if [ $(($ROWS * $COLUMNS)) -lt $NUM_VIDEOS ]; then
+    ROWS=$(($ROWS + 1))
+fi
+
+# Get screen dimensions
+SCREEN_WIDTH=$(xdpyinfo | awk '/dimensions:/ {print $2}' | cut -d'x' -f1)
+SCREEN_HEIGHT=$(xdpyinfo | awk '/dimensions:/ {print $2}' | cut -d'x' -f2)
+
+# Calculate window size
+WINDOW_WIDTH=$((SCREEN_WIDTH / COLUMNS))
+WINDOW_HEIGHT=$((SCREEN_HEIGHT / ROWS))
+
+# Launch mpv instances
+i=0
+for video in "$@"; do
+    ROW=$((i / COLUMNS))
+    COL=$((i % COLUMNS))
+    X=$((COL * WINDOW_WIDTH))
+    Y=$((ROW * WINDOW_HEIGHT))
+
+    mpv --geometry=${WINDOW_WIDTH}x${WINDOW_HEIGHT}+$X+$Y --autofit=$WINDOW_WIDTHx$WINDOW_HEIGHT --no-border "$video" &
+
+    i=$((i + 1))
+done
+
+# Wait a bit to ensure all windows are open
+sleep 5
+
+# Get all mpv window IDs
+MPV_WINDOW_IDS=$(wmctrl -l | grep -i mpv | awk '{print $1}')
+
+# Group the windows using wmctrl
+for WINDOW_ID in $MPV_WINDOW_IDS; do
+    wmctrl -ir $WINDOW_ID -b add,maximized_vert,maximized_horz
+done
+
+wait
+
+=== hdri.sh ===
+#!/bin/bash
+
+# Change to the correct directory
+cd /home/pscale/DiffusionLight
+
+# Source the .bashrc file to get the conda setup
+source ~/.bashrc
+
+# Activate the conda environment
+conda activate diffusionlight
+
+# Check if natsort is installed, install if not
+if ! python -c "import natsort" &> /dev/null; then
+    echo "Installing natsort..."
+    conda install -y natsort
+fi
+
+# Run the commands
+python inpaint.py --dataset ./input --output_dir ./output/
+python ball2envmap.py --ball_dir ./output/square --envmap_dir ./output/envmap
+python exposure2hdr.py --input_dir ./output/envmap --output_dir ./output/hdr
+
+# Deactivate the conda environment
+conda deactivate
+
+=== houdini_back.sh ===
+#!/bin/bash
+
+# This script backs up or restores Houdini configuration folders from the current user's home directory.
+# It detects Houdini version folders (named like houdini20.5, houdini21) in $HOME.
+# For backup: selects a folder, backs up to $DEST/$version/$dated_subfolder (YYMMDD).
+# For restore: selects a backup version, lists available dated subfolders, selects one, then selects a target folder in $HOME to restore to.
+# Uses rsync for efficient synchronization, preserving file permissions, timestamps, and handling updates.
+
+# Default destination backup directory
+DEFAULT_DEST="/mnt/r/program/houdini/setup"
+
+# Prompt for backup location
+echo "Default backup location: $DEFAULT_DEST"
+echo "Enter a different backup location or press Enter to use the default:"
+read USER_DEST
+
+# Use user input if provided, otherwise default
+DEST="${USER_DEST:-$DEFAULT_DEST}"
+
+# Ask for action
+echo "What do you want to do?"
+echo "1: Backup"
+echo "2: Restore"
+read ACTION
+
+case $ACTION in
+    1)
+        # Backup mode
+
+        # Find Houdini folders in $HOME
+        HOUDINI_FOLDERS=($(ls -d "$HOME"/houdini*/ 2>/dev/null | xargs -n1 basename))
+
+        if [ ${#HOUDINI_FOLDERS[@]} -eq 0 ]; then
+            echo "No Houdini folders found in $HOME."
+            exit 1
+        fi
+
+        echo "Select which folder to backup:"
+        for i in "${!HOUDINI_FOLDERS[@]}"; do
+            VERSION=${HOUDINI_FOLDERS[$i]#houdini}
+            echo "[$(($i+1))] houdini $VERSION found"
+        done
+
+        read SELECT
+        if ! [[ "$SELECT" =~ ^[0-9]+$ ]] || [ $SELECT -lt 1 ] || [ $SELECT -gt ${#HOUDINI_FOLDERS[@]} ]; then
+            echo "Invalid selection."
+            exit 1
+        fi
+
+        SELECTED=${HOUDINI_FOLDERS[$(($SELECT-1))]}
+        SOURCE="$HOME/$SELECTED"
+
+        # Check if source directory exists
+        if [ ! -d "$SOURCE" ]; then
+            echo "Error: Source directory $SOURCE does not exist."
+            exit 1
+        fi
+
+        # Create dated subfolder in YYMMDD format
+        DATE_FOLDER=$(date +%y%m%d)
+        BACKUP_DIR="$DEST/$SELECTED/$DATE_FOLDER"
+
+        # Create backup directory if it doesn't exist
+        if [ ! -d "$BACKUP_DIR" ]; then
+            mkdir -p "$BACKUP_DIR"
+            if [ $? -ne 0 ]; then
+                echo "Error: Failed to create backup directory $BACKUP_DIR."
+                exit 1
+            fi
+        fi
+
+        # Perform the backup using rsync
+        rsync -av --progress "$SOURCE/" "$BACKUP_DIR/"
+
+        if [ $? -eq 0 ]; then
+            echo "Backup completed successfully from $SOURCE to $BACKUP_DIR."
+        else
+            echo "Backup failed."
+            exit 1
+        fi
+        ;;
+    2)
+        # Restore mode
+
+        # Find available backup versions in $DEST
+        BACKUP_VERSIONS=($(ls -d "$DEST"/houdini*/ 2>/dev/null | xargs -n1 basename))
+
+        if [ ${#BACKUP_VERSIONS[@]} -eq 0 ]; then
+            echo "No backup versions found in $DEST."
+            exit 1
+        fi
+
+        echo "Select which backup version to restore from:"
+        for i in "${!BACKUP_VERSIONS[@]}"; do
+            VERSION=${BACKUP_VERSIONS[$i]#houdini}
+            echo "[$(($i+1))] houdini $VERSION"
+        done
+
+        read SELECT_FROM
+        if ! [[ "$SELECT_FROM" =~ ^[0-9]+$ ]] || [ $SELECT_FROM -lt 1 ] || [ $SELECT_FROM -gt ${#BACKUP_VERSIONS[@]} ]; then
+            echo "Invalid selection."
+            exit 1
+        fi
+
+        SELECTED_FROM=${BACKUP_VERSIONS[$(($SELECT_FROM-1))]}
+        BACKUP_VERSION_DIR="$DEST/$SELECTED_FROM"
+
+        # Find available dated folders (assuming YYMMDD format), sorted descending
+        DATE_FOLDERS=($(ls -d "$BACKUP_VERSION_DIR"/[0-9][0-9][0-9][0-9][0-9][0-9] 2>/dev/null | sort -r))
+
+        if [ ${#DATE_FOLDERS[@]} -eq 0 ]; then
+            echo "Error: No backup date folders found for $SELECTED_FROM in $BACKUP_VERSION_DIR."
+            exit 1
+        fi
+
+        echo "Select which date folder to restore from (latest first):"
+        for i in "${!DATE_FOLDERS[@]}"; do
+            echo "[$(($i+1))] ${DATE_FOLDERS[$i]##*/}"
+        done
+
+        read SELECT_DATE
+        if ! [[ "$SELECT_DATE" =~ ^[0-9]+$ ]] || [ $SELECT_DATE -lt 1 ] || [ $SELECT_DATE -gt ${#DATE_FOLDERS[@]} ]; then
+            echo "Invalid selection."
+            exit 1
+        fi
+
+        SELECTED_DATE=${DATE_FOLDERS[$(($SELECT_DATE-1))]}
+
+        # Find Houdini folders in $HOME to restore to
+        HOUDINI_FOLDERS=($(ls -d "$HOME"/houdini*/ 2>/dev/null | xargs -n1 basename))
+
+        if [ ${#HOUDINI_FOLDERS[@]} -eq 0 ]; then
+            echo "No Houdini folders found in $HOME to restore to."
+            exit 1
+        fi
+
+        echo "Select which folder to restore to:"
+        for i in "${!HOUDINI_FOLDERS[@]}"; do
+            VERSION=${HOUDINI_FOLDERS[$i]#houdini}
+            echo "[$(($i+1))] houdini $VERSION found"
+        done
+
+        read SELECT_TO
+        if ! [[ "$SELECT_TO" =~ ^[0-9]+$ ]] || [ $SELECT_TO -lt 1 ] || [ $SELECT_TO -gt ${#HOUDINI_FOLDERS[@]} ]; then
+            echo "Invalid selection."
+            exit 1
+        fi
+
+        SELECTED_TO=${HOUDINI_FOLDERS[$(($SELECT_TO-1))]}
+        TARGET="$HOME/$SELECTED_TO"
+
+        # Create target directory if it doesn't exist
+        if [ ! -d "$TARGET" ]; then
+            mkdir -p "$TARGET"
+            if [ $? -ne 0 ]; then
+                echo "Error: Failed to create target directory $TARGET."
+                exit 1
+            fi
+        fi
+
+        # Perform the restore using rsync
+        rsync -av --progress "$SELECTED_DATE/" "$TARGET/"
+
+        if [ $? -eq 0 ]; then
+            echo "Restore completed successfully from $SELECTED_DATE to $TARGET."
+        else
+            echo "Restore failed."
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Invalid option. Please choose 1 or 2."
+        exit 1
+        ;;
+esac
+
+=== htmlpreview.sh ===
+#!/bin/bash
+
+# Check if at least one file is provided
+if [ "$#" -eq 0 ]; then
+    echo "Usage: $0 file1 [file2 ...]"
+    exit 1
+fi
+
+# Create the preview subfolder if it doesn't exist
+PREVIEW_DIR="preview"
+mkdir -p "$PREVIEW_DIR"
+
+# Copy input files into the preview directory
+for file in "$@"; do
+    cp "$file" "$PREVIEW_DIR/"
+done
+
+# Define the output HTML file (inside the preview folder)
+OUTPUT="$PREVIEW_DIR/gallery.html"
+
+# Write the HTML header, title, and CSS styling into the output file
+cat << 'EOF' > "$OUTPUT"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>References</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    h1 {
+      text-align: center;
+    }
+    .gallery {
+      display: block;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .gallery img,
+    .gallery video {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-bottom: 20px;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+<h1>References</h1>
+<div class="gallery">
+EOF
+
+# Append an element for each file based on its type
+for file in "$@"; do
+    base=$(basename "$file")
+    ext="${base##*.}"
+    ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+    case "$ext" in
+        jpg|jpeg|png|gif|bmp|tiff)
+            echo "  <img src=\"$base\" alt=\"$base\">" >> "$OUTPUT"
+            ;;
+        mp4|mov|avi|mkv|webm|flv|wmv)
+            echo "  <video src=\"$base\" autoplay loop muted playsinline></video>" >> "$OUTPUT"
+            ;;
+        *)
+            # For unrecognized file types, just create a link
+            echo "  <p><a href=\"$base\">$base</a></p>" >> "$OUTPUT"
+            ;;
+    esac
+done
+
+# Write the closing HTML tags
+cat << 'EOF' >> "$OUTPUT"
+</div>
+</body>
+</html>
+EOF
+
+echo "Gallery created in $OUTPUT"
+
+
+=== joinvideo.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Create an array to hold the input files
+inputs=()
+
+# Loop through all mp4 files in the current directory
+for f in *.mp4; do
+  # Add each file to the inputs array with the appropriate FFmpeg input flag
+  inputs+=("-i" "$f")
+done
+
+# Count the number of input files
+num_inputs=${#inputs[@]}
+
+# Build the filter_complex string dynamically based on the number of inputs
+filter_complex=""
+for ((i=0; i<num_inputs; i+=2)); do
+  filter_complex+="[$((i/2)):v:0]"
+done
+filter_complex+="concat=n=$((num_inputs/2)):v=1[outv]"
+
+# Run FFmpeg with the constructed command, specifying codecs for encoding
+ffmpeg "${inputs[@]}" -filter_complex "$filter_complex" -map "[outv]" -c:v libx264 -crf 23 -preset fast output.mp4
+
+
+=== mergeprores2.sh ===
+#!/bin/bash
+
+# Check if ffmpeg is installed
+if ! command -v ffmpeg &> /dev/null; then
+  echo "Error: ffmpeg is not installed. Please install it using 'sudo apt install ffmpeg'."
+  exit 1
+fi
+
+# Check for even number of arguments
+if [ "$#" -lt 2 ] || [ $(($# % 2)) -ne 0 ]; then
+  echo "Error: Please select an even number of video files."
+  exit 1
+fi
+
+declare -A left_files
+declare -A right_files
+
+# Separate left and right files into respective associative arrays
+for file in "$@"; do
+  if [[ "$file" =~ _left\.mov$ || "$file" =~ _l\.mov$ ]]; then
+    base_name="${file%_*}"
+    left_files["$base_name"]="$file"
+  elif [[ "$file" =~ _right\.mov$ || "$file" =~ _r\.mov$ ]]; then
+    base_name="${file%_*}"
+    right_files["$base_name"]="$file"
+  else
+    echo "Error: Selected files do not match expected naming convention (_left.mov, _l.mov, _right.mov, _r.mov)."
+    exit 1
+  fi
+done
+
+# Merge files
+for base_name in "${!left_files[@]}"; do
+  left="${left_files[$base_name]}"
+  right="${right_files[$base_name]}"
+
+  if [ -n "$right" ]; then
+    output="${base_name}.mov"
+    ffmpeg -i "$left" -i "$right" -filter_complex hstack -c:v prores_ks -profile:v 4 -pix_fmt yuv444p10le "$output" || {
+      echo "Error: Failed to merge $left and $right."
+      exit 1
+    }
+    echo "Merged $left and $right into $output"
+  else
+    echo "Error: No matching right file for $left"
+  fi
+done
+
+echo "Merge completed successfully."
+
+=== mergeprores.sh ===
+#!/bin/bash
+
+for left in *_left.mov
+do
+  right="${left%_left.mov}_right.mov"
+  if [ -f "$right" ]; then
+    output="${left%_left.mov}_output.mov"
+    ffmpeg -i "$left" -i "$right" -filter_complex hstack -c:v prores_ks -profile:v 4 -pix_fmt yuv444p10le "$output"
+  fi
+done
+
+=== meta.sh ===
+#!/usr/bin/env bash
+# @nemo
+# Extract EXR metadata into metadata.txt in the selected folder
+
+set -euo pipefail
+
+# 1. Figure out the folder you clicked on
+if [[ $# -ge 1 && -d "$1" ]]; then
+  SEQ_FOLDER="$1"
+elif [[ $# -ge 1 && -f "$1" ]]; then
+  SEQ_FOLDER="$(dirname "$1")"
+else
+  SEQ_FOLDER="$PWD"
+fi
+
+# 2. Gather EXR list
+mapfile -t EXRS < <(find "$SEQ_FOLDER" -maxdepth 1 -type f -iname '*.exr' | sort)
+if (( ${#EXRS[@]} == 0 )); then
+  notify-send "Extract EXR metadata" "No .exr files found in $SEQ_FOLDER"
+  exit 1
+fi
+
+# 3. Write metadata.txt
+OUT="$SEQ_FOLDER/metadata.txt"
+{
+  echo "Metadata extracted: $(date --iso-8601=seconds)"
+  echo "────────────────────────────────────────────"
+  for EXR in "${EXRS[@]}"; do
+    echo
+    echo "File: $(basename "$EXR")"
+    echo "------------------------"
+    exrheader "$EXR" 2>&1 || echo "⚠️  Failed on $EXR"
+  done
+} > "$OUT"
+
+# 4. Notify
+notify-send "Extract EXR metadata" "Wrote ${#EXRS[@]} files’ headers to $(basename "$OUT")"
+
+
+=== mint_shortcut_backup.sh ===
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Where to put the backup (default: ./mint-shortcuts-backup)
+BACKUP_DIR="${1:-mint-shortcuts-backup}"
+
+# Ensure dconf is installed
+if ! command -v dconf >/dev/null 2>&1; then
+  echo "Error: dconf not found. Please install dconf-cli." >&2
+  exit 1
+fi
+
+mkdir -p "$BACKUP_DIR"
+
+echo "Dumping Cinnamon desktop keybindings…"
+dconf dump /org/cinnamon/desktop/keybindings/ \
+  > "$BACKUP_DIR/cinnamon-keybindings.dconf"
+
+echo "Dumping Cinnamon window-manager keybindings…"
+dconf dump /org/cinnamon/desktop/wm/keybindings/ \
+  > "$BACKUP_DIR/cinnamon-wm-keybindings.dconf"
+
+echo "Dumping any custom-keybindings schema (if used)…"
+dconf dump /org/cinnamon/desktop/keybindings/custom-keybindings/ \
+  > "$BACKUP_DIR/cinnamon-custom-keybindings.dconf" || true
+
+echo "Dumping GNOME media-keys custom bindings (if you’ve set any)…"
+dconf dump /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/ \
+  > "$BACKUP_DIR/gnome-media-custom.dconf" || true
+
+echo
+echo "Backup complete! Files in '$BACKUP_DIR':"
+ls -1 "$BACKUP_DIR"
+
+
+=== mint_shortcut_restore.sh ===
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: ./restore-mint-shortcuts.sh [backup-directory]
+BACKUP_DIR="${1:-mint-shortcuts-backup}"
+
+# Check backup directory exists
+if [[ ! -d "$BACKUP_DIR" ]]; then
+  echo "Error: Backup directory '$BACKUP_DIR' not found." >&2
+  exit 1
+fi
+
+# Helper: load if file exists
+load_dconf() {
+  local path="$1"
+  local file="$2"
+  if [[ -s "$BACKUP_DIR/$file" ]]; then
+    echo "Restoring $path from $file…"
+    dconf load "$path" < "$BACKUP_DIR/$file"
+  else
+    echo "Skipping $file (empty or missing)."
+  fi
+}
+
+# Ensure dconf is available
+if ! command -v dconf >/dev/null 2>&1; then
+  echo "Error: 'dconf' command not found. Install dconf-cli and try again." >&2
+  exit 1
+fi
+
+# Load each schema
+load_dconf /org/cinnamon/desktop/keybindings/               "cinnamon-keybindings.dconf"
+load_dconf /org/cinnamon/desktop/wm/keybindings/            "cinnamon-wm-keybindings.dconf"
+load_dconf /org/cinnamon/desktop/keybindings/custom-keybindings/ "cinnamon-custom-keybindings.dconf"
+load_dconf /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/ "gnome-media-custom.dconf"
+
+echo
+echo "Done. You may need to open Settings → Keyboard → Shortcuts and click 'Apply' to see changes."
+
+
+=== mkv_dnxhr.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+set -euo pipefail
+
+# Check for input
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 <input.mkv>"
+  exit 1
+fi
+
+input="$1"
+base="$(basename "${input%.*}")"
+OUT_DIR="$(dirname "$input")/dnxhr_output"
+mkdir -p "$OUT_DIR"
+output="${OUT_DIR}/${base}.mov"
+
+echo "Converting: $input → $output"
+
+ffmpeg -threads "$(nproc)" -i "$input" \
+  -c:v dnxhd -profile:v dnxhr_hq -pix_fmt yuv422p \
+  -c:a pcm_s16le \
+  "$output"
+
+notify-send "✅ DNxHR Conversion Done" "$base → dnxhr_output/"
+
+
+=== mkv_h264.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+set -euo pipefail
+
+# Check for input
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 <input.mkv>"
+  exit 1
+fi
+
+input="$1"
+base="$(basename "${input%.*}")"
+OUT_DIR="$(dirname "$input")/h264_output"
+mkdir -p "$OUT_DIR"
+output="${OUT_DIR}/${base}.mov"
+
+echo "Converting (H.264 NVENC): $input → $output"
+
+ffmpeg -hwaccel nvdec -i "$input" \
+  -c:v h264_nvenc -preset p4 -profile:v high -b:v 25M \
+  -c:a aac -b:a 192k \
+  "$output"
+
+notify-send "✅ H.264 Conversion Done" "$base → h264_output/"
+
+
+=== mkv_mov.sh ===
+#!/usr/bin/env bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 <input-video>"
+  exit 1
+fi
+
+input="$1"
+if [[ ! -f "$input" ]]; then
+  echo "Error: file '$input' not found."
+  exit 2
+fi
+
+# derive output filename by replacing extension with .mov
+base="${input%.*}"
+output="${base}.mov"
+
+# ffmpeg conversion:
+# - video: Apple ProRes 422 (profile 3), 10-bit 4:2:2
+# - audio: uncompressed PCM 48 kHz, 16-bit little-endian
+ffmpeg -y -i "$input" \
+  -c:v prores_ks \
+  -profile:v 3 \
+  -vendor ap10 \
+  -pix_fmt yuv422p10le \
+  -c:a pcm_s16le \
+  -ar 48000 \
+  "$output"
+
+echo "Converted '$input' → '$output'"
+
+
+=== mm.sh ===
+#!/bin/bash
+
+# Connect using the full SSH command and execute monitor.sh from the correct path
+ssh -t mini@192.168.8.138 'bash -ic "/home/mini/linux_scripts/monitor.sh; exec bash"'
+
+=== monitor2.sh ===
+#!/bin/bash
+
+# Check if the tmux session already exists
+tmux has-session -t monitoring 2>/dev/null
+
+if [ $? != 0 ]; then
+  # Start a new tmux session and detach it immediately
+  tmux new-session -d -s monitoring
+
+  # Split the window horizontally
+  tmux split-window -h
+
+  # Start btop in the first pane (pane 0)
+  tmux send-keys -t monitoring:0.0 'btop' C-m
+
+  # Start nvtop in the second pane (pane 1)
+  tmux send-keys -t monitoring:0.1 'nvtop' C-m
+
+  # Create a new window
+  tmux new-window -t monitoring
+
+  # Start watch sensors in the new window (window 1, pane 0)
+  tmux send-keys -t monitoring:1.0 'watch sensors' C-m
+fi
+
+# Attach the session to the current terminal
+tmux attach-session -t monitoring
+
+=== monitor.sh ===
+#!/bin/bash
+
+# Check if the tmux session already exists
+tmux has-session -t monitoring 2>/dev/null
+
+if [ $? != 0 ]; then
+  # Start a new tmux session and detach it immediately
+  tmux new-session -d -s monitoring
+
+  # Split the window horizontally
+  tmux split-window -h
+
+  # Start btm in the first pane (pane 0)
+  tmux send-keys -t monitoring:0.0 'btop' C-m
+
+  # Start nvtop in the second pane (pane 1)
+  tmux send-keys -t monitoring:0.1 'nvtop' C-m
+fi
+
+# Attach the session to the current terminal
+tmux attach-session -t monitoring
+
+=== montage4.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+OUTPUT="final_image.exr"
+ROWS=2
+COLS=2
+FILES=""
+
+# Build a 2×2 mosaic in row-major order (left→right, top→bottom)
+for (( row=0; row<ROWS; row++ )); do
+  for (( col=0; col<COLS; col++ )); do
+    idx=$(( row * COLS + col + 1 ))
+    FILES+=" $(printf "%02d.exr" "$idx")"
+  done
+done
+
+oiiotool $FILES --mosaic ${COLS}x${ROWS} -o "$OUTPUT"
+
+
+=== montage6.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+OUTPUT="final_image.exr"
+
+# Build row-major order (left to right, top to bottom)
+FILES=""
+for row in {0..1}; do
+  for col in {0..1}; do
+    idx=$((row * 2 + col + 1))
+    FILES+=" $(printf "%02d.exr" "$idx")"
+  done
+done
+
+oiiotool $FILES --mosaic 2x2 -o "$OUTPUT"
+
+=== montage.sh ===
+#!/bin/bash
+
+OUTPUT="final_image.exr"
+
+# Build row-major order (left to right, top to bottom)
+FILES=""
+for row in {0..5}; do
+  for col in {1..6}; do
+    idx=$((row * 6 + col))
+    FILES+=" $(printf "%02d.exr" "$idx")"
+  done
+done
+
+oiiotool $FILES --mosaic 6x6 -o "$OUTPUT"
+
+=== movtoexr.sh ===
+#!/bin/bash
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <video_file>"
+    exit 1
+fi
+
+video_file="$1"
+
+if [ ! -f "$video_file" ]; then
+    echo "File not found: $video_file"
+    exit 1
+fi
+
+echo "Starting conversion of $video_file to DWAB compressed EXR sequence..."
+
+output_dir=$(basename "$video_file" .mov)"_exr"
+mkdir -p "$output_dir"
+
+# Convert the video directly to a sequence of EXR files with DWAB compression
+ffmpeg -i "$video_file" -vf "format=rgb48le" -compression_level 100 "$output_dir/frame_%04d.exr"
+
+echo "Conversion completed. DWAB compressed EXR sequence is available in $output_dir"
+
+=== mp4hq.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Create the mp4 directory if it doesn't exist
+mkdir -p mp4
+
+# Check if any arguments are provided
+if [ "$#" -gt 0 ]; then
+    # Process each file provided as an argument
+    for i in "$@"; do
+        ffmpeg -i "$i" \
+        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+        -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p \
+        "./mp4/$(basename "${i%.*}").mp4"
+    done
+else
+    # Process all files in the current directory
+    for i in *.*; do
+        ffmpeg -i "$i" \
+        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+        -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p \
+        "./mp4/$(basename "${i%.*}").mp4"
+    done
+fi
+
+exit
+
+=== mp4.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Create the mp4 directory if it doesn't exist
+mkdir -p mp4
+
+# Check if any arguments are provided
+if [ "$#" -gt 0 ]; then
+    # Process each file provided as an argument
+    for i in "$@"; do
+        ffmpeg -i "$i" \
+        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+        -c:v libx264 -pix_fmt yuv420p \
+        "./mp4/$(basename "${i%.*}").mp4"
+    done
+else
+    # Process all files in the current directory
+    for i in *.*; do
+        ffmpeg -i "$i" \
+        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+        -c:v libx264 -pix_fmt yuv420p \
+        "./mp4/$(basename "${i%.*}").mp4"
+    done
+fi
+
+exit
+
+=== mp4topng.sh ===
+#!/bin/bash
+
+# Default zero padding
+zero_padding=4
+
+# Video file extensions to include
+declare -a video_extensions=("mp4" "mkv" "mov" "avi" "flv" "wmv")
+
+# Function to process video
+process_video() {
+    local video=$1
+    local zero_padding=$2
+    local base_name="${video%.*}"
+
+    # Generate the format string for zero padding
+    local format="%0${zero_padding}d"
+
+    # Directory name for PNGs
+    local dir_name="${base_name}_png"
+
+    # Create directory for PNGs if it doesn't exist
+    mkdir -p "$dir_name"
+
+    # Extract frames without changing resolution
+    ffmpeg -i "$video" -vsync 0 "${dir_name}/${base_name}_${format}.png"
+
+    echo "Conversion completed: ${dir_name}/${base_name}_[frame_number].png with zero padding of $zero_padding"
+}
+
+# Process all video files if no specific file is provided
+if [ "$#" -eq 0 ]; then
+    for ext in "${video_extensions[@]}"; do
+        for video in *.$ext; do
+            [ -e "$video" ] || continue # Skip if no files found for this extension
+            process_video "$video" $zero_padding
+        done
+    done
+else
+    # Parse command line arguments
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -0pad) zero_padding="$2"; shift ;;
+            *) video="$1" ;;
+        esac
+        shift
+    done
+
+    # Call process_video function with the specified video and zero padding
+    process_video "$video" $zero_padding
+fi
+
+=== mp4towav.sh ===
+#!/bin/bash
+
+# Check if the input argument (filename) is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 filename.mp4"
+    exit 1
+fi
+
+# Extract the filename without its extension
+input_file="$1"
+output_file="${input_file%.*}.wav"
+
+# Use ffmpeg to extract audio and convert it to WAV format
+ffmpeg -i "$input_file" -vn -ar 44100 -ac 2 -b:a 192k -f wav "$output_file"
+
+echo "Extraction complete. Output file: $output_file"
+
+=== noaudio.sh ===
+#!/bin/bash
+# Check for input argument
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <input_video>"
+  exit 1
+fi
+
+input="$1"
+
+# Verify file exists
+if [ ! -f "$input" ]; then
+  echo "Error: File '$input' not found."
+  exit 1
+fi
+
+# Extract base filename and extension
+filename="${input%.*}"
+extension="${input##*.}"
+
+# Construct output filename with '_noaudio' suffix
+output="${filename}_noaudio.${extension}"
+
+# Remove audio stream and copy video stream without re-encoding
+ffmpeg -i "$input" -c copy -an "$output"
+
+
+=== nuke_backup.sh ===
+#!/bin/bash
+
+# This script backs up or restores the .nuke folder from the current user's home directory.
+# For backup: copies to a specified backup location inside a dated subfolder (YYMMDD).
+# For restore: finds the latest dated subfolder and copies back to ~/.nuke.
+# It uses rsync for efficient synchronization, preserving file permissions, timestamps, and handling updates.
+
+# Source directory (universal: uses $HOME to work on any user's PC)
+SOURCE="$HOME/.nuke"
+
+# Default destination backup directory
+DEFAULT_DEST="/mnt/r/program/nuke/setup"
+
+# Prompt for backup location
+echo "Default backup location: $DEFAULT_DEST"
+echo "Enter a different backup location or press Enter to use the default:"
+read USER_DEST
+
+# Use user input if provided, otherwise default
+DEST="${USER_DEST:-$DEFAULT_DEST}"
+
+# Ask for action
+echo "What do you want to do?"
+echo "1: Backup"
+echo "2: Restore from latest backup"
+read ACTION
+
+case $ACTION in
+    1)
+        # Backup mode
+
+        # Create dated subfolder in YYMMDD format
+        DATE_FOLDER=$(date +%y%m%d)
+        BACKUP_DIR="$DEST/$DATE_FOLDER"
+
+        # Check if source directory exists
+        if [ ! -d "$SOURCE" ]; then
+            echo "Error: Source directory $SOURCE does not exist."
+            exit 1
+        fi
+
+        # Create backup directory if it doesn't exist
+        if [ ! -d "$BACKUP_DIR" ]; then
+            mkdir -p "$BACKUP_DIR"
+            if [ $? -ne 0 ]; then
+                echo "Error: Failed to create backup directory $BACKUP_DIR."
+                exit 1
+            fi
+        fi
+
+        # Perform the backup using rsync
+        rsync -av --progress "$SOURCE/" "$BACKUP_DIR/"
+
+        if [ $? -eq 0 ]; then
+            echo "Backup completed successfully from $SOURCE to $BACKUP_DIR."
+        else
+            echo "Backup failed."
+            exit 1
+        fi
+        ;;
+    2)
+        # Restore mode
+
+        # Find the latest dated folder (assuming YYMMDD format)
+        LATEST=$(ls -d "$DEST"/[0-9][0-9][0-9][0-9][0-9][0-9] 2>/dev/null | sort -r | head -n 1)
+
+        if [ -z "$LATEST" ]; then
+            echo "Error: No backup folders found in $DEST."
+            exit 1
+        fi
+
+        # Check if source directory exists, create if not
+        if [ ! -d "$SOURCE" ]; then
+            mkdir -p "$SOURCE"
+            if [ $? -ne 0 ]; then
+                echo "Error: Failed to create source directory $SOURCE."
+                exit 1
+            fi
+        fi
+
+        # Perform the restore using rsync
+        rsync -av --progress "$LATEST/" "$SOURCE/"
+
+        if [ $? -eq 0 ]; then
+            echo "Restore completed successfully from $LATEST to $SOURCE."
+        else
+            echo "Restore failed."
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Invalid option. Please choose 1 or 2."
+        exit 1
+        ;;
+esac
+
+=== obs_copy.sh ===
+#!/bin/bash
+
+
+# To run this script continuously on system startup (via systemd), follow these steps:
+# 1. Make the script executable:
+#      chmod +x /home/mini/linux_scripts/obs_copy.sh
+# 2. Create a systemd service file:
+#      sudo nano /etc/systemd/system/obs_copy.service
+#    And add the following content (adjust 'User' and 'Group'):
+#
+#      [Unit]
+#      Description=OBS Copy Service
+#
+#      [Service]
+#      ExecStart=/home/mini/linux_scripts/obs_copy.sh
+#      Restart=always
+#      User=mini
+#      Group=mini
+#
+#      [Install]
+#      WantedBy=multi-user.target
+#
+# 3. Enable and start the service:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable obs_copy.service
+#      sudo systemctl start obs_copy.service
+
+source_dir="/home/mini/Videos/OBS"
+dest_dir="/mnt/a/youtube/recordings"
+
+# Function to get the current date's destination subdirectory
+get_dest_subdir() {
+  today=$(date +"%y%m%d")
+  echo "$dest_dir/$today"
+}
+
+# Ensure the initial directory exists
+mkdir -p "$(get_dest_subdir)"
+
+# inotifywait command (monitor for close_write event)
+inotifywait -mrq --format "%w%f" -e close_write "$source_dir" | while IFS= read -r line; do
+  # Extract file path from inotifywait output
+  file_path="$line"
+
+  # Get the current destination subdirectory (recalculates date)
+  dest_subdir=$(get_dest_subdir)
+
+  # Create the directory if it doesn't exist (important for new days)
+  mkdir -p "$dest_subdir"
+
+  # Copy the file to the destination subdirectory
+  cp -p "$file_path" "$dest_subdir"
+
+  echo "Copied file '$file_path' to '$dest_subdir'"
+done
+
+=== open_clipboard.sh ===
+#!/bin/bash
+path=$(xclip -o -selection clipboard | xargs)  # Get and trim clipboard content
+
+# Function to check if any file in sequence exists
+check_sequence_exists() {
+    local pattern="$1"
+    # Replace #### with * for globbing
+    local glob_path="${pattern//####/[0-9][0-9][0-9][0-9]}"
+    # Check if any file matches the pattern
+    if compgen -G "$glob_path" > /dev/null; then
+        return 0  # Success
+    else
+        return 1  # Failure
+    fi
+}
+
+# Check if path is an image sequence
+if [[ "$path" =~ \.(#+|[0-9]{4})\.(exr|png|jpg|jpeg|tif|tiff|dpx)$ ]] && check_sequence_exists "$path"; then
+    /usr/local/DJV2/bin/djv.sh "$path"  # Open image sequences with DJV
+# Check if path exists and is a file or directory
+elif [ -e "$path" ]; then
+    # If it's a file and has a video extension
+    if [ -f "$path" ] && [[ "$path" =~ \.(mp4|mkv|avi|mov|wmv|flv|webm)$ ]]; then
+        celluloid "$path"  # Open video files with Celluloid
+    # If it's a directory or other file
+    elif [ -d "$path" ] || [ -f "$path" ]; then
+        nemo "$path"  # Open with Nemo file manager
+    fi
+else
+    notify-send "Invalid path in clipboard: $path"
+fi
+
+=== pngtomp4.sh ===
+#!/bin/bash
+
+# Current directory where the PNG files are located
+input_dir="."
+
+# Frame rate
+fps=24
+
+# Find the first PNG file in the sequence in the current directory
+first_png=$(ls ${input_dir}/*.png | sort | head -n 1)
+
+# Check if PNG files are found
+if [ -z "$first_png" ]; then
+    echo "No PNG files found in the current directory."
+    exit 1
+fi
+
+# Extract the base name from the first PNG file
+# This assumes the naming convention is like "Heatmap2_00000.png"
+base_name=$(basename "${first_png}")
+base_name="${base_name%_*}"
+
+# Output file name based on the first input frame
+output_file="${base_name}.mp4"
+
+# Find the resolution of the first PNG in the sequence
+resolution=$(identify -format "%wx%h" "${first_png}")
+
+# Use ffmpeg to convert the PNG sequence to MP4
+ffmpeg -framerate ${fps} -pattern_type glob -i "${input_dir}/${base_name}_*.png" -s:v ${resolution} -c:v libx264 -pix_fmt yuv420p -crf 23 "${output_file}"
+
+echo "Conversion completed: ${output_file}"
+
+=== project_folder.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Use the current working directory as the target
+TARGET_DIR="."
+
+# Debugging: Print the target directory
+echo "Creating folder structure in: $TARGET_DIR"
+
+# Create the folder structure
+mkdir -p "${TARGET_DIR}/1-IN"
+mkdir -p "${TARGET_DIR}/2-WORK/houdini"
+mkdir -p "${TARGET_DIR}/2-WORK/nuke"
+mkdir -p "${TARGET_DIR}/2-WORK/blender"
+mkdir -p "${TARGET_DIR}/2-WORK/pureref"
+mkdir -p "${TARGET_DIR}/3-DAILIES"
+mkdir -p "${TARGET_DIR}/4-OUT/yymmdd"
+mkdir -p "${TARGET_DIR}/5-CASE"
+
+echo "Folder structure created in ${TARGET_DIR}"
+
+
+=== prores422hq.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+mkdir prores422hq
+for i in *.*; do ffmpeg -i "$i" -c:v prores_ks \
+-profile:v 3 \
+-vendor apl0 \
+-bits_per_mb 8000 \
+-pix_fmt yuv422p10le \
+./prores422hq/"${i%.*}.mov"; done
+
+exit
+
+
+
+=== prores444.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+mkdir -p prores444
+for i in *.*; do
+  ffmpeg -i "$i" \
+    -c:v prores_ks \
+    -profile:v 3 \
+    -pix_fmt yuv444p10le \
+    -color_range pc \
+    -colorspace bt709 \
+    -color_trc bt709 \
+    -color_primaries bt709 \
+    -c:a pcm_s16le \
+    ./prores444/"${i%.*}.mov"
+done
+
+exit
+
+=== record (another copy).sh ===
+#!/usr/bin/env bash
+# record_dual_sync.sh — desktop 30 FPS + webcam + audio, remuxed to .mov
+
+set -euo pipefail
+
+###############################################################################
+# CONFIGURATION
+###############################################################################
+WEBCAM_RES="3840x2160"
+WEBCAM_FPS=30
+WEBCAM_PIXFMT="yuyv422"
+
+AUDIO_DEV="alsa_input.usb-ZOOM_Corporation_ZOOM_P4_Audio_000000000000-00.iec958-stereo"
+
+NVENC_PRESET="p3"  # faster than p7, still great quality
+DEFAULT_OUT_DIR="$HOME/Videos/recording"
+MONITOR_FPS=30
+###############################################################################
+
+############################
+# Parse args
+############################
+BASE_OUT_DIR="${1:-$DEFAULT_OUT_DIR}"
+
+############################
+# Make daily folder (YYYYMMDD)
+############################
+DAY_DIR="$(date +%Y%m%d)"
+OUT_DIR="${BASE_OUT_DIR}/${DAY_DIR}"
+mkdir -p "$OUT_DIR"
+
+############################
+# Detect primary monitor geometry
+############################
+primary_line=$(xrandr | grep ' connected primary')
+MONITOR_GEOM=$(echo "$primary_line" | grep -o '[0-9]\+x[0-9]\++[0-9]\++[0-9]\+')
+MONITOR_RES=$(echo "$MONITOR_GEOM" | cut -d'+' -f1)
+MONITOR_XOFF=$(echo "$MONITOR_GEOM" | cut -d'+' -f2)
+MONITOR_YOFF=$(echo "$MONITOR_GEOM" | cut -d'+' -f3)
+
+############################
+# Output paths
+############################
+ts=$(date +%Y%m%d_%H%M%S)
+desktop_out="${OUT_DIR}/desktop_${ts}_30fps.mkv"
+webcam_out="${OUT_DIR}/webcam_${ts}.mkv"
+
+############################
+# Find first working webcam
+############################
+WEBCAM_DEV=""
+for dev in /dev/video*; do
+  if ffmpeg -f v4l2 -video_size "$WEBCAM_RES" -framerate "$WEBCAM_FPS" \
+           -pixel_format "$WEBCAM_PIXFMT" -t 1 -loglevel error \
+           -i "$dev" -f null - 2>/dev/null; then
+    WEBCAM_DEV="$dev"
+    break
+  fi
+done
+
+if [[ -n "$WEBCAM_DEV" ]]; then
+  echo "🟢 Webcam available: $WEBCAM_DEV — will be recorded"
+  USE_WEBCAM=true
+else
+  echo "🟡 No working webcam found — skipping webcam recording"
+  USE_WEBCAM=false
+fi
+
+############################
+# Info
+############################
+echo "▶︎ Monitor : ${MONITOR_RES}@${MONITOR_FPS} offset +${MONITOR_XOFF},${MONITOR_YOFF}"
+echo "▶︎ Audio   : ${AUDIO_DEV}"
+echo "▶︎ Desktop : ${desktop_out}"
+$USE_WEBCAM && echo "▶︎ Webcam  : ${webcam_out}"
+echo "(Press 'q' in the FFmpeg window to stop recording)"
+
+############################
+# Run FFmpeg
+############################
+ffmpeg \
+  -thread_queue_size 1024 \
+  -f x11grab -video_size "$MONITOR_RES" -framerate "$MONITOR_FPS" \
+    -fflags nobuffer -flags low_delay \
+    -use_wallclock_as_timestamps 1 -i ":0.0+${MONITOR_XOFF},${MONITOR_YOFF}" \
+  $( $USE_WEBCAM && printf '%s ' \
+    -thread_queue_size 1024 -f v4l2 -video_size "$WEBCAM_RES" \
+    -framerate "$WEBCAM_FPS" -pixel_format "$WEBCAM_PIXFMT" \
+    -use_wallclock_as_timestamps 1 -i "$WEBCAM_DEV" ) \
+  -thread_queue_size 512 -f pulse -i "$AUDIO_DEV" \
+  -copyts -start_at_zero -vsync vfr \
+  \
+  -map 0:v -map $( $USE_WEBCAM && echo "2" || echo "1" ):a \
+    -c:v h264_nvenc -preset "$NVENC_PRESET" -rc constqp -qp 18 \
+    -c:a aac -b:a 192k "$desktop_out" \
+  \
+  $( $USE_WEBCAM && printf '%s ' \
+    -map 1:v -map 2:a -c:v h264_nvenc -preset "$NVENC_PRESET" \
+    -qp 23 -c:a aac -b:a 192k "$webcam_out" )
+
+############################
+# Remux to .mov for Resolve
+############################
+echo "🔁 Remuxing to .mov with PCM audio for Resolve…"
+
+# Remux desktop video
+desktop_mov="${desktop_out%.mkv}.mov"
+ffmpeg -y -i "$desktop_out" \
+  -c:v copy \
+  -c:a pcm_s16le -ar 48000 -ac 2 \
+  -movflags +faststart \
+  "$desktop_mov"
+
+# Remux webcam video (if recorded)
+if [[ "$USE_WEBCAM" == true ]]; then
+  webcam_mov="${webcam_out%.mkv}.mov"
+  ffmpeg -y -i "$webcam_out" \
+    -c:v copy \
+    -c:a pcm_s16le -ar 48000 -ac 2 \
+    -movflags +faststart \
+    "$webcam_mov"
+fi
+
+# Optional cleanup (uncomment to remove original MKVs)
+# rm -f "$desktop_out"
+# $USE_WEBCAM && rm -f "$webcam_out"
+
+echo "✅ Done: Files saved to $OUT_DIR (mov + audio compatible with Resolve)"
+
+
+=== record (copy).sh ===
+#!/usr/bin/env bash
+# record_dual_sync.sh — desktop 30 FPS + webcam + audio, no preview
+set -euo pipefail
+
+###############################################################################
+# CONFIGURATION
+###############################################################################
+WEBCAM_RES="3840x2160"
+WEBCAM_FPS=30
+WEBCAM_PIXFMT="yuyv422"
+
+AUDIO_DEV="alsa_input.usb-ZOOM_Corporation_ZOOM_P4_Audio_000000000000-00.iec958-stereo"
+
+NVENC_PRESET="p7"
+DEFAULT_OUT_DIR="$HOME/Videos/recording"
+MONITOR_FPS=30
+###############################################################################
+
+############################
+# Parse args
+############################
+BASE_OUT_DIR="${1:-$DEFAULT_OUT_DIR}"
+
+############################
+# Make daily folder  (YYYYMMDD)
+############################
+DAY_DIR="$(date +%Y%m%d)"
+OUT_DIR="${BASE_OUT_DIR}/${DAY_DIR}"
+mkdir -p "$OUT_DIR"
+
+############################
+# Detect primary monitor geometry
+############################
+primary_line=$(xrandr | grep ' connected primary')
+MONITOR_GEOM=$(echo "$primary_line" | grep -o '[0-9]\+x[0-9]\++[0-9]\++[0-9]\+')
+MONITOR_RES=$(echo "$MONITOR_GEOM" | cut -d'+' -f1)
+MONITOR_XOFF=$(echo "$MONITOR_GEOM" | cut -d'+' -f2)
+MONITOR_YOFF=$(echo "$MONITOR_GEOM" | cut -d'+' -f3)
+
+############################
+# Output paths
+############################
+ts=$(date +%Y%m%d_%H%M%S)
+desktop_out="${OUT_DIR}/desktop_${ts}_30fps.mkv"
+webcam_out="${OUT_DIR}/webcam_${ts}.mkv"
+
+############################
+# Find first working webcam
+############################
+WEBCAM_DEV=""
+for dev in /dev/video*; do
+  if ffmpeg -f v4l2 -video_size "$WEBCAM_RES" -framerate "$WEBCAM_FPS" \
+           -pixel_format "$WEBCAM_PIXFMT" -t 1 -loglevel error \
+           -i "$dev" -f null - 2>/dev/null; then
+    WEBCAM_DEV="$dev"
+    break
+  fi
+done
+
+if [[ -n "$WEBCAM_DEV" ]]; then
+  echo "🟢 Webcam available: $WEBCAM_DEV — will be recorded"
+  USE_WEBCAM=true
+else
+  echo "🟡 No working webcam found — skipping webcam recording"
+  USE_WEBCAM=false
+fi
+
+############################
+# Info
+############################
+echo "▶︎ Monitor : ${MONITOR_RES}@${MONITOR_FPS} offset +${MONITOR_XOFF},${MONITOR_YOFF}"
+echo "▶︎ Audio   : ${AUDIO_DEV}"
+echo "▶︎ Desktop : ${desktop_out}"
+$USE_WEBCAM && echo "▶︎ Webcam  : ${webcam_out}"
+echo "(Press 'q' in the FFmpeg window to stop recording)"
+
+############################
+# Run FFmpeg
+############################
+ffmpeg \
+  -thread_queue_size 1024 \
+  -f x11grab -video_size "$MONITOR_RES" -framerate "$MONITOR_FPS" \
+    -fflags nobuffer -flags low_delay \
+    -use_wallclock_as_timestamps 1 -i ":0.0+${MONITOR_XOFF},${MONITOR_YOFF}" \
+  $( $USE_WEBCAM && printf '%s ' \
+    -thread_queue_size 1024 -f v4l2 -video_size "$WEBCAM_RES" \
+    -framerate "$WEBCAM_FPS" -pixel_format "$WEBCAM_PIXFMT" \
+    -use_wallclock_as_timestamps 1 -i "$WEBCAM_DEV" ) \
+  -thread_queue_size 512 -f pulse -i "$AUDIO_DEV" \
+  -copyts -start_at_zero -vsync vfr \
+  \
+  -map 0:v -map $( $USE_WEBCAM && echo "2" || echo "1" ):a \
+    -c:v h264_nvenc -preset "$NVENC_PRESET" -rc constqp -qp 18 \
+    -c:a aac -b:a 320k "$desktop_out" \
+  \
+  $( $USE_WEBCAM && printf '%s ' \
+    -map 1:v -map 2:a -c:v h264_nvenc -preset "$NVENC_PRESET" \
+    -qp 23 -c:a aac -b:a 320k "$webcam_out" )
+
+
+=== record.sh ===
+#!/usr/bin/env bash
+# record_dual_sync.sh — desktop 30 FPS + webcam + audio, remuxed to .mov for Resolve
+
+set -euo pipefail
+
+###############################################################################
+# CONFIGURATION
+###############################################################################
+WEBCAM_RES="3840x2160"
+WEBCAM_FPS=30
+WEBCAM_PIXFMT="yuyv422"
+
+AUDIO_DEV="hw:1,0"  # ALSA device for Zoom P4
+
+NVENC_PRESET="p3"  # Faster than p7
+DEFAULT_OUT_DIR="$HOME/Videos/recording"
+MONITOR_FPS=30
+###############################################################################
+
+############################
+# Parse args
+############################
+BASE_OUT_DIR="${1:-$DEFAULT_OUT_DIR}"
+
+############################
+# Make daily folder (YYYYMMDD)
+############################
+DAY_DIR="$(date +%Y%m%d)"
+OUT_DIR="${BASE_OUT_DIR}/${DAY_DIR}"
+mkdir -p "$OUT_DIR"
+
+############################
+# Detect primary monitor geometry
+############################
+primary_line=$(xrandr | grep ' connected primary')
+MONITOR_GEOM=$(echo "$primary_line" | grep -o '[0-9]\+x[0-9]\++[0-9]\++[0-9]\+')
+MONITOR_RES=$(echo "$MONITOR_GEOM" | cut -d'+' -f1)
+MONITOR_XOFF=$(echo "$MONITOR_GEOM" | cut -d'+' -f2)
+MONITOR_YOFF=$(echo "$MONITOR_GEOM" | cut -d'+' -f3)
+
+############################
+# Output paths
+############################
+ts=$(date +%Y%m%d_%H%M%S)
+desktop_out="${OUT_DIR}/desktop_${ts}_30fps.mkv"
+webcam_out="${OUT_DIR}/webcam_${ts}.mkv"
+
+############################
+# Find first working webcam
+############################
+WEBCAM_DEV=""
+for dev in /dev/video*; do
+  if ffmpeg -f v4l2 -video_size "$WEBCAM_RES" -framerate "$WEBCAM_FPS" \
+           -pixel_format "$WEBCAM_PIXFMT" -t 1 -loglevel error \
+           -i "$dev" -f null - 2>/dev/null; then
+    WEBCAM_DEV="$dev"
+    break
+  fi
+done
+
+if [[ -n "$WEBCAM_DEV" ]]; then
+  echo "🟢 Webcam available: $WEBCAM_DEV — will be recorded"
+  USE_WEBCAM=true
+else
+  echo "🟡 No working webcam found — skipping webcam recording"
+  USE_WEBCAM=false
+fi
+
+############################
+# Info
+############################
+echo "▶︎ Monitor : ${MONITOR_RES}@${MONITOR_FPS} offset +${MONITOR_XOFF},${MONITOR_YOFF}"
+echo "▶︎ Audio   : ${AUDIO_DEV}"
+echo "▶︎ Desktop : ${desktop_out}"
+$USE_WEBCAM && echo "▶︎ Webcam  : ${webcam_out}"
+echo "(Press 'q' in the FFmpeg window to stop recording)"
+
+############################
+# Run FFmpeg
+############################
+ffmpeg \
+  -thread_queue_size 1024 \
+  -f x11grab -video_size "$MONITOR_RES" -framerate "$MONITOR_FPS" \
+    -fflags nobuffer -flags low_delay \
+    -use_wallclock_as_timestamps 1 -i ":0.0+${MONITOR_XOFF},${MONITOR_YOFF}" \
+  $( $USE_WEBCAM && printf '%s ' \
+    -thread_queue_size 1024 -f v4l2 -video_size "$WEBCAM_RES" \
+    -framerate "$WEBCAM_FPS" -pixel_format "$WEBCAM_PIXFMT" \
+    -use_wallclock_as_timestamps 1 -i "$WEBCAM_DEV" ) \
+  -thread_queue_size 512 -f alsa -use_wallclock_as_timestamps 1 -i "$AUDIO_DEV" \
+  -copyts -start_at_zero -vsync vfr -async 1 -af aresample=async=1 \
+  \
+  -map 0:v -map $( $USE_WEBCAM && echo "2" || echo "1" ):a \
+    -c:v h264_nvenc -preset "$NVENC_PRESET" -rc constqp -qp 18 \
+    -c:a aac -b:a 192k "$desktop_out" \
+  \
+  $( $USE_WEBCAM && printf '%s ' \
+    -map 1:v -map 2:a -c:v h264_nvenc -preset "$NVENC_PRESET" \
+    -qp 23 -c:a aac -b:a 192k "$webcam_out" )
+
+############################
+# Remux to .mov with PCM audio
+############################
+echo "🔁 Remuxing to .mov with PCM audio for Resolve compatibility…"
+
+# Remux desktop video
+desktop_mov="${desktop_out%.mkv}.mov"
+ffmpeg -y -i "$desktop_out" \
+  -c:v copy \
+  -c:a pcm_s16le -ar 48000 -ac 2 \
+  -movflags +faststart \
+  "$desktop_mov"
+
+# Remux webcam video (if recorded)
+if [[ "$USE_WEBCAM" == true ]]; then
+  webcam_mov="${webcam_out%.mkv}.mov"
+  ffmpeg -y -i "$webcam_out" \
+    -c:v copy \
+    -c:a pcm_s16le -ar 48000 -ac 2 \
+    -movflags +faststart \
+    "$webcam_mov"
+fi
+
+# Optional: delete MKVs after remux
+rm -f "$desktop_out"
+$USE_WEBCAM && rm -f "$webcam_out"
+
+echo "✅ Done: Files saved to $OUT_DIR — fully Resolve-compatible."
+
+
+=== record_shortcut.sh ===
+#!/usr/bin/env bash
+set -euo pipefail
+
+PID_FILE="/tmp/record_shortcut_terminal.pid"
+RECORD_SCRIPT="/home/mini2/linux_scripts/record.sh"
+RECORD_DIR="$HOME/Videos/recording"
+TERMINAL="x-terminal-emulator"
+
+# If already recording, stop
+if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  echo "🔴 Stopping recording..."
+  notify-send "Recording stopped" "Saved to: $RECORD_DIR"
+  kill "$(cat "$PID_FILE")" && rm -f "$PID_FILE"
+  exit 0
+fi
+
+# Start recording
+echo "🟢 Starting recording..."
+notify-send "Recording started" "Press shortcut again to stop."
+
+# Launch terminal and run record.sh
+$TERMINAL -e bash -c "\"$RECORD_SCRIPT\" \"$RECORD_DIR\"" &
+
+# Give it a second to launch
+sleep 1
+
+# Get the actual terminal PID running the script
+TERMINAL_PID=$(pgrep -f "$TERMINAL.*$RECORD_SCRIPT" | head -n 1)
+
+if [[ -n "$TERMINAL_PID" ]]; then
+  echo "$TERMINAL_PID" > "$PID_FILE"
+else
+  echo "⚠️ Failed to find terminal PID. Cleanup may not work." >&2
+fi
+
+
+=== rft_to_txt.sh ===
+#!/bin/bash
+
+# Function to convert RTF to TXT
+convert_rtf_to_txt() {
+    input_file="$1"
+    output_file="${input_file%.rtf}.txt"
+    unrtf --text "$input_file" > "$output_file"
+}
+
+# Iterate through all RTF files in the folder and subfolders
+find . -name "*.rtf" -type f | while read -r rtf_file; do
+    echo "Converting $rtf_file..."
+    convert_rtf_to_txt "$rtf_file"
+done
+
+=== set_wacom.sh ===
+#!/bin/bash
+xsetwacom set "Wacom Intuos Pro M Pen stylus" MapToOutput "3840x2160+1080+1440"
+xsetwacom set "Wacom Intuos Pro M Pen eraser" MapToOutput "3840x2160+1080+1440"
+
+=== sine.sh ===
+#!/bin/bash
+
+# Check if the 'play' process is already running
+if pgrep -x "play" > /dev/null; then
+  # If running, kill the process
+  pkill -f "play -n synth sine 852" > /dev/null 2>&1 
+else
+  # If not running, start the sine wave
+  play -n synth sine 852 &
+fi
+
+=== smp4.sh ===
+#!/bin/bash
+
+# Loop over each argument passed to the script
+for i in "$@"; do
+  # Extract the filename without extension
+  filename=$(basename -- "$i")
+  extension="${filename##*.}"
+  filename="${filename%.*}"
+  
+  # Convert the file and save it with '_small' appended to the original filename
+  ffmpeg -i "$i" \
+  -c:v libx264 -pix_fmt yuv420p \
+  "${filename}_small.${extension}"
+done
+
+exit
+
+=== syncblender.sh ===
+# Sync to /home/pscale/.config/blender on the remote machine
+rsync -avz /home/pscale/.config/blender/ node@192.168.8.134:/home/pscale/.config/blender
+
+# Sync to /home/node/.config/blender on the remote machine
+rsync -avz /home/pscale/.config/blender/ node@192.168.8.134:/home/node/.config/blender
+
+=== thumbnail.sh ===
+#!/bin/bash
+
+# Function to extract frames from a video file
+extract_frames() {
+    local file=$1
+    shift
+    local frames=("$@")
+    local filename=$(basename "$file")
+    local filename_without_ext="${filename%.*}"
+
+    # Loop through each frame number and extract it
+    for frame in "${frames[@]}"; do
+        local output="${filename_without_ext}_frame_${frame}.jpg"
+
+        # Execute FFmpeg command to extract the specified frame
+        ffmpeg -i "$file" -vf "select=eq(n\,${frame})" -vframes 1 "$output"
+
+        echo "Extracted frame $frame for $file as $output"
+    done
+}
+
+# Initialize variables
+declare -a frames=(0)  # Default to extracting the first frame
+video_file=""
+
+# Process command line arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -frames)
+            shift  # Move past the '-frames' argument
+            frames=()  # Reset frames array to fill with new values
+            while [[ "$1" =~ ^[0-9]+$ ]]; do
+                frames+=("$1")
+                shift
+            done
+            ;;
+        *)
+            if [ -f "$1" ] && [[ $(file --mime-type -b "$1") =~ ^video/ ]]; then
+                video_file="$1"
+            else
+                echo "Warning: File $1 not found or is not a video."
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Extract frames from the specified video file or all video files in the directory
+if [ -n "$video_file" ]; then
+    extract_frames "$video_file" "${frames[@]}"
+else
+    echo "No specific video file provided, extracting from all videos in the current directory."
+    for file in *; do
+        if [[ $(file --mime-type -b "$file") =~ ^video/ ]]; then
+            extract_frames "$file" "${frames[@]}"
+        fi
+    done
+fi
+
+echo "Frame extraction completed."
+
+=== tojpg.sh ===
+#!/bin/bash
+
+# Loop through all files in the current directory
+for image in *; do
+
+    # Check if the file is a regular file and has an image extension
+    if [[ -f "$image" && ( "$image" == *.png || "$image" == *.gif || "$image" == *.bmp || "$image" == *.tiff || "$image" == *.jpeg ) && "$image"!= *.jpg ]]; then
+
+        # Extract the filename without extension
+        filename=$(basename "$image")
+        filename="${filename%.*}"
+
+        # Convert the image to JPG using mogrify
+        mogrify -format jpg "$image"
+
+        # Rename the original file by appending "_original" to the filename
+        mv "$image" "${filename}_original.${image##*.}"
+
+        # Rename the converted JPG file to the original filename
+        mv "${filename}.jpg" "${filename}.jpg"
+    fi
+done
+
+=== transcribe.sh ===
+#!/bin/bash
+
+# Capture the directory from which the script was launched
+START_DIR="$(pwd)"
+
+# Initialize variables with default language set to English
+LANGUAGE_ARG="--language English"
+AUDIO_FILE=""
+
+# Function to get the full path of the directory of a file
+get_full_dir() {
+  echo "$(cd "$(dirname "$1")" && pwd)"
+}
+
+# Parse command-line arguments
+for arg in "$@"
+do
+    case $arg in
+        --language)
+        LANGUAGE_ARG="--language $2"
+        shift # Remove '--language'
+        shift # Remove language code
+        ;;
+        *)
+        # Assume it is the audio file path
+        if [ -z "$AUDIO_FILE" ]; then
+            AUDIO_FILE=$(realpath "$arg")
+        fi
+        shift # Remove generic argument
+        ;;
+    esac
+done
+
+# Check if an audio file was provided
+if [ -z "$AUDIO_FILE" ]; then
+    echo "Usage: $0 <audio_file> [--language lang_code]"
+    exit 1
+fi
+
+# Check if the audio file exists
+if [ ! -f "$AUDIO_FILE" ]; then
+    echo "Error: Audio file '$AUDIO_FILE' not found."
+    exit 1
+fi
+
+echo "Audio file located: $AUDIO_FILE"
+
+# Get the full path of the directory where the audio file is located
+AUDIO_DIR=$(get_full_dir "$AUDIO_FILE")
+echo "Script will run in directory: $AUDIO_DIR"
+
+# Navigate to the directory where Whisper is installed
+echo "Navigating to Whisper directory..."
+cd /home/mini/whisper
+
+# Activate the Python environment
+echo "Activating Python environment..."
+source /home/mini/whisper/whisper_env/bin/activate
+
+# Print the current directory and files to confirm the presence of the audio file
+echo "Current directory: $(pwd)"
+echo "Listing files in audio directory:"
+ls -l "$AUDIO_DIR"
+
+# Run Whisper with the audio file provided as an argument
+OUTPUT_FILE="$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav).txt"
+echo "Running Whisper to transcribe audio with language flag $LANGUAGE_ARG..."
+whisper "$AUDIO_FILE" $LANGUAGE_ARG --device cuda > "$OUTPUT_FILE"
+
+# Check if the output file was created
+if [ -f "$OUTPUT_FILE" ]; then
+    echo "Transcription complete: $OUTPUT_FILE"
+
+    # ================================================
+    #  Run formattxt.sh to format the transcription
+    # ================================================
+    echo "Running formattxt.sh to format the transcription..."
+    # If formattxt.sh is in your PATH, you can just use:
+    #   formattxt.sh "$OUTPUT_FILE"
+    # Otherwise, provide the full path, e.g.:
+    #   /home/mini/whisper/formattxt.sh "$OUTPUT_FILE"
+    /home/mini/linux_scripts/formattxt.sh "$OUTPUT_FILE"
+
+    # If formattxt.sh produces a new file, e.g.:
+    FORMATTED_FILE="$AUDIO_DIR/$(basename "$AUDIO_FILE" .wav)_formatted.txt"
+
+    # Create the 'transcribes' folder where this script was originally launched
+    mkdir -p "$START_DIR/transcribes"
+
+    # Move the original .txt file
+    mv "$OUTPUT_FILE" "$START_DIR/transcribes/"
+    echo "Moved original transcription to: $START_DIR/transcribes/"
+
+    # If the formatted file exists, move that too
+    if [ -f "$FORMATTED_FILE" ]; then
+        mv "$FORMATTED_FILE" "$START_DIR/transcribes/"
+        echo "Moved formatted transcription to: $START_DIR/transcribes/"
+    else
+        echo "No separate formatted file found."
+    fi
+else
+    echo "Failed to create output file."
+fi
+
+# Deactivate the Python environment
+echo "Deactivating Python environment..."
+deactivate
+
+
+=== trim.sh ===
+#!/bin/bash
+
+# Function to trim frames from the start and/or end of a video
+trim_video() {
+    local file=$1
+    local start_trim=$2
+    local end_trim=$3
+
+    # Extract filename without extension
+    local filename=$(basename -- "$file")
+    local extension="${filename##*.}"
+    local filename_without_ext="${filename%.*}"
+    local output="${filename_without_ext}_trimmed.${extension}"
+
+    # Get total number of frames in the video
+    local total_frames=$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 "$file")
+
+    # Calculate the last frame to keep, subtracting the end trim value
+    local end_frame=$((total_frames - end_trim))
+
+    # Build the FFmpeg command
+    local ffmpeg_cmd="ffmpeg -i \"$file\""
+
+    # If start_trim is specified, add the trim command for the start
+    if [ $start_trim -gt 0 ]; then
+        ffmpeg_cmd+=" -vf \"select=gte(n\,$start_trim)\""
+    fi
+
+    # If end_trim is specified and less than total frames, add the trim command for the end
+    if [ $end_trim -gt 0 ] && [ $end_frame -lt $total_frames ]; then
+        ffmpeg_cmd+=" -to $(ffprobe -v error -select_streams v -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 \"$file\" | awk -v fps=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nokey=1:noprint_wrappers=1 "$file" | awk -F '/' '{ print $1 / $2 }') -v frames=$end_frame 'BEGIN { getline; print frames / fps }')"
+    fi
+
+    ffmpeg_cmd+=" \"$output\""
+
+    # Execute the FFmpeg command
+    eval $ffmpeg_cmd
+
+    echo "Trimmed video saved as $output"
+}
+
+# Default values for start and end frame trims
+start_trim=0
+end_trim=0
+
+# Parse command line arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -start)
+            start_trim=$2
+            shift 2
+            ;;
+        -end)
+            end_trim=$2
+            shift 2
+            ;;
+        *)
+            # Process the video file with specified trim values
+            if [ -f "$1" ]; then
+                trim_video "$1" $start_trim $end_trim
+            else
+                echo "File $1 not found."
+            fi
+            exit 0
+            ;;
+    esac
+done
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 [-start frame_count] [-end frame_count] filename"
+    exit 1
+fi
+
+=== videomerge.sh ===
+#!/bin/bash
+
+# Output file name
+output_file="output.mp4"
+
+# Temporary file to store concatenated video
+temp_file="temp_concat.mp4"
+
+# Check if there are no input videos
+if [ "$#" -eq 0 ]; then
+    echo "No input videos provided."
+    exit 1
+fi
+
+# Create a temporary list of input files
+input_list=$(mktemp)
+for video_file in "$@"; do
+    echo "file '$(realpath "$video_file")'" >> "$input_list"
+done
+
+# Concatenate videos using ffmpeg
+ffmpeg -f concat -safe 0 -i "$input_list" -c copy "$temp_file"
+
+# Rename concatenated file to output name
+mv "$temp_file" "$output_file"
+
+# Remove the temporary input list file
+rm "$input_list"
+
+echo "Concatenation complete. Output file: $output_file"
+
+=== videotojpg.sh ===
+#!/bin/bash
+
+# Check if an argument (video file name) is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <video file>"
+    exit 1
+fi
+
+# Get the video file name from the argument
+video_file="$1"
+
+# Check if the file exists
+if [ ! -f "$video_file" ]; then
+    echo "File not found: $video_file"
+    exit 1
+fi
+
+# Extract the filename without extension
+filename=$(basename "$video_file" | cut -d. -f1)
+
+# Create a directory for the JPEG sequence
+output_dir="${filename}_jpg"
+mkdir -p "$output_dir"
+
+# Convert the video to a JPEG sequence
+ffmpeg -i "$video_file" -vf fps=24 "$output_dir/${filename}_%04d.jpg"
+
+echo "JPEG sequence is saved in $output_dir"
+
+=== videotomp3.sh ===
+#!/bin/bash
+
+# Check if the input argument (filename) is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <input_video>"
+    exit 1
+fi
+
+# Extract the filename without its extension
+input_file="$1"
+output_file="${input_file%.*}.mp3"
+
+# Use ffmpeg to extract audio
+ffmpeg -i "$input_file" -vn -ar 44100 -ac 2 -b:a 192k "$output_file"
+
+echo "Extraction complete. Output file: $output_file"
+
+=== videotopng.sh ===
+#!/bin/bash
+
+# Check if an argument (video file name) is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <video file>"
+    exit 1
+fi
+
+# Get the video file name from the argument
+video_file="$1"
+
+# Check if the file exists
+if [ ! -f "$video_file" ]; then
+    echo "File not found: $video_file"
+    exit 1
+fi
+
+# Extract the filename without extension
+filename=$(basename "$video_file" | cut -d. -f1)
+
+# Create a directory for the PNG sequence
+output_dir="${filename}_png"
+mkdir -p "$output_dir"
+
+# Convert the video to a PNG sequence
+ffmpeg -i "$video_file" -vf fps=24 "$output_dir/${filename}_%04d.png"
+
+echo "PNG sequence is saved in $output_dir"
+
+=== videototxt.sh ===
+#!/bin/bash
+
+# A wrapper script that converts a video (e.g. MKV) to MP3
+# and then transcribes it using Whisper, finally copying
+# the MP3 to a transcribes folder.
+
+# Usage:
+#   mkvtotxt.sh input.mkv [--language lang_code]
+
+# 1) Parse command-line arguments
+LANGUAGE="English"
+VIDEO_INPUT=""
+
+for arg in "$@"
+do
+    case $arg in
+        --language)
+            LANGUAGE="$2"
+            shift    # Remove '--language'
+            shift    # Remove lang_code
+            ;;
+        *)
+            # Assume first non-flag argument is the input video file
+            if [ -z "$VIDEO_INPUT" ]; then
+                VIDEO_INPUT="$arg"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# 2) Check if a video file was provided
+if [ -z "$VIDEO_INPUT" ]; then
+    echo "Usage: $0 <input_video> [--language lang_code]"
+    exit 1
+fi
+
+# 3) Convert video to MP3
+echo "Converting '$VIDEO_INPUT' to MP3..."
+/home/mini/linux_scripts/videotomp3.sh "$VIDEO_INPUT"
+
+# Build the MP3 filename from the input video name
+MP3_FILE="${VIDEO_INPUT%.*}.mp3"
+
+# Verify the MP3 was created
+if [ ! -f "$MP3_FILE" ]; then
+    echo "Error: MP3 file not created."
+    exit 1
+fi
+
+# 4) Transcribe the MP3
+echo "Transcribing '$MP3_FILE' with language '$LANGUAGE'..."
+/home/mini/linux_scripts/transcribe.sh "$MP3_FILE" --language "$LANGUAGE"
+
+# 5) Copy the MP3 to the 'transcribes' folder
+echo "Copying MP3 to 'transcribes' folder..."
+mkdir -p transcribes
+mv "$MP3_FILE" transcribes/
+
+echo "All done."
+
+
+=== wacom1.sh ===
+#!/bin/bash
+xsetwacom set "Wacom Intuos Pro M Pen stylus" MapToOutput 3440x1440+170+0
+xsetwacom set "Wacom Intuos Pro M Pen eraser" MapToOutput 3440x1440+170+0
+xsetwacom set "Wacom Intuos Pro M Finger touch" MapToOutput 3440x1440+170+0
+
+
+=== wacom2.sh ===
+#!/bin/bash
+xsetwacom set "Wacom Intuos Pro M Pen stylus" MapToOutput 3840x2160+0+1440
+xsetwacom set "Wacom Intuos Pro M Pen eraser" MapToOutput 3840x2160+0+1440
+xsetwacom set "Wacom Intuos Pro M Finger touch" MapToOutput 3840x2160+0+1440
+
+
+=== wacom3.sh ===
+#!/bin/bash
+xsetwacom set "Wacom Intuos Pro M Pen stylus" MapToOutput desktop
+xsetwacom set "Wacom Intuos Pro M Pen eraser" MapToOutput desktop
+xsetwacom set "Wacom Intuos Pro M Finger touch" MapToOutput desktop
+
+
+=== watch_convert_to_gif.sh ===
+#!/bin/bash
+
+WATCH_DIR="/mnt/a/refs"
+GIF_DIR="$WATCH_DIR/gif"
+VIDEOS_DIR="$WATCH_DIR/videos"
+FPS=24
+
+# Create required directories
+mkdir -p "$GIF_DIR" "$VIDEOS_DIR"
+
+# Function to convert a video file if needed and move it
+convert_video() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+
+    local base
+    base=$(basename "${file%.*}")
+    local gif_file="$GIF_DIR/${base}.gif"
+
+    if [ -f "$gif_file" ]; then
+        echo "GIF already exists for $file, moving video."
+        mv "$file" "$VIDEOS_DIR"
+        return 0
+    fi
+
+    echo "Converting $file..."
+    local palette
+    palette=$(mktemp /tmp/palette.XXXXXX.png)
+    ffmpeg -y -i "$file" -vf "fps=$FPS,scale=trunc(iw/4)*2:trunc(ih/4)*2,palettegen=max_colors=64" "$palette"
+    ffmpeg -y -i "$file" -i "$palette" -filter_complex "fps=$FPS,scale=trunc(iw/4)*2:trunc(ih/4)*2[x];[x][1:v]paletteuse" "$gif_file"
+    rm "$palette"
+    mv "$file" "$VIDEOS_DIR"
+    echo "Converted and moved $file."
+}
+
+# Initial scan: process all video files in the base folder
+for file in "$WATCH_DIR"/*; do
+    case "$file" in
+        *.mp4|*.mov|*.avi|*.mkv|*.flv|*.wmv)
+            convert_video "$file"
+            ;;
+    esac
+done
+
+# Ensure inotifywait is installed
+command -v inotifywait >/dev/null 2>&1 || { echo "inotifywait is required but not installed. Aborting." >&2; exit 1; }
+
+# Monitor the base folder for new video files
+inotifywait -m -e close_write --format '%w%f' "$WATCH_DIR" | while read NEWFILE; do
+    case "$NEWFILE" in
+        *.mp4|*.mov|*.avi|*.mkv|*.flv|*.wmv)
+            convert_video "$NEWFILE"
+            ;;
+        *)
+            echo "Ignoring non-video file: $NEWFILE"
+            ;;
+    esac
+done
+
+
+=== watch_move_videos.sh ===
+#!/bin/bash
+
+WATCH_DIR="/mnt/a/refs"
+VIDEOS_DIR="$WATCH_DIR/videos"
+
+mkdir -p "$VIDEOS_DIR"
+
+# Ensure inotifywait is installed
+command -v inotifywait >/dev/null 2>&1 || { echo "inotifywait is required but not installed. Aborting." >&2; exit 1; }
+
+inotifywait -m -e close_write --format '%w%f' "$WATCH_DIR" | while read NEWFILE; do
+    # Skip directories and files already in the videos folder
+    [ -d "$NEWFILE" ] && continue
+    [[ "$NEWFILE" == "$VIDEOS_DIR/"* ]] && continue
+
+    case "$NEWFILE" in
+        *.mp4|*.mov|*.avi|*.mkv|*.flv|*.wmv)
+            echo "Moving video file: $NEWFILE"
+            mv "$NEWFILE" "$VIDEOS_DIR"
+            ;;
+        *)
+            echo "Ignoring non-video file: $NEWFILE"
+            ;;
+    esac
+done
+
+
+=== webmp4.sh ===
+User
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+User
+#!/bin/bash
+
+# Create the output directory if it doesn't already exist
+mkdir -p mp4_web
+
+# Function to process a single video file
+convert_video() {
+    local file=$1
+    local smaller=$2
+    local filename=$(basename "$file")
+    local extension="${filename##*.}"
+    local filename_without_ext="${filename%.*}"
+
+    # Define the output filename based on whether the -smaller flag is used
+    local suffix="_web"
+    if [ "$smaller" == "true" ]; then
+        suffix="_web_small"
+    fi
+    local output="mp4_web/${filename_without_ext}${suffix}.mp4"
+
+    # Set default FFmpeg parameters
+    local codec="-vcodec libx264"
+    local preset="-preset veryslow"
+    local crf="-crf 23"
+
+    # Adjust parameters for stronger compression if the -smaller flag is set
+    if [ "$smaller" == "true" ]; then
+        preset="-preset superfast"
+        crf="-crf 28"
+    fi
+
+    # Execute FFmpeg command with the desired settings
+    ffmpeg -i "$file" $codec $preset $crf -vf "scale=-2:1080" -acodec aac -b:a 128k "$output"
+
+    echo "Converted $file to $output"
+}
+
+# Flag for stronger compression
+smaller=false
+
+# Check if the -smaller flag is provided
+if [[ " $* " =~ " -smaller " ]]; then
+    smaller=true
+    set -- "${@/-smaller/}"
+fi
+
+# Check if specific filenames are provided as arguments
+if [ $# -gt 0 ]; then
+    # Process each file provided as an argument
+    for file in "$@"; do
+        if [ -f "$file" ]; then
+            convert_video "$file" $smaller
+        else
+            echo "File $file not found."
+        fi
+    done
+else
+    # Process all video files in the current directory if no arguments are provided
+    for file in *; do
+        if [[ $(file --mime-type -b "$file") =~ ^video/ ]]; then
+            convert_video "$file" $smaller
+        fi
+    done
+fi
+
+echo "Conversion completed."
+
+=== webmp4_smaller.sh ===
+#!/bin/bash
+# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+
+# Create the output directory if it doesn't already exist
+mkdir -p mp4_web
+
+# Function to process a single video file
+convert_video() {
+    local file=$1
+    local filename=$(basename "$file")
+    local extension="${filename##*.}"
+    local filename_without_ext="${filename%.*}"
+
+    # Define the output filename
+    local suffix="_web_small"
+    local output="mp4_web/${filename_without_ext}${suffix}.mp4"
+
+    # Set FFmpeg parameters for stronger compression
+    local codec="-vcodec libx264"
+    local preset="-preset superfast"
+    local crf="-crf 28"
+
+    # Execute FFmpeg command with the desired settings
+    ffmpeg -i "$file" $codec $preset $crf -vf "scale=-2:1080" -acodec aac -b:a 128k "$output"
+
+    echo "Converted $file to $output"
+}
+
+# Check if specific filenames are provided as arguments
+if [ $# -gt 0 ]; then
+    # Process each file provided as an argument
+    for file in "$@"; do
+        if [ -f "$file" ]; then
+            convert_video "$file"
+        else
+            echo "File $file not found."
+        fi
+    done
+else
+    # Process all video files in the current directory if no arguments are provided
+    for file in *; do
+        if [[ $(file --mime-type -b "$file") =~ ^video/ ]]; then
+            convert_video "$file"
+        fi
+    done
+fi
+
+echo "Conversion completed."
+
