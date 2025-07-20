@@ -215,4 +215,7 @@ for video_file in "${FOUND_FILES[@]}"; do
     fi
 done
 
+echo "DAILIES_PATH:$DAILIES_DATE_FOLDER"
+
+
 echo "🎉 Conversion complete! Video files are in: $DAILIES_DATE_FOLDER"
