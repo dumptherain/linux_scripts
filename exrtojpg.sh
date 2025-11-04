@@ -1,37 +1,50 @@
 #!/bin/bash
-# Deploys scripts with `# @nemo` tag to Nemo's right-click menu
+# Convert EXR → JPG. If no inputs, process all *.exr in current directory.
+# -folder → place converted JPGs into ./jpg/
 
-# Check if an input file is provided
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 input.exr"
+USE_FOLDER=0
+
+# Parse -folder flag
+if [ "$1" = "-folder" ]; then
+    USE_FOLDER=1
+    shift
+fi
+
+# If no input files passed, use all .exr in CWD
+if [ $# -eq 0 ]; then
+    set -- *.exr
+fi
+
+# If no .exr found
+if [ "$1" = "*.exr" ]; then
+    echo "No .exr files found."
     exit 1
 fi
 
-# Input file
-INPUT="$1"
-
-# Check if input file exists
-if [ ! -f "$INPUT" ]; then
-    echo "Error: Input file '$INPUT' does not exist"
-    exit 1
+# Ensure output folder exists if flag is used
+if [ $USE_FOLDER -eq 1 ]; then
+    mkdir -p jpg
 fi
 
-# Check if input file has .exr extension
-if [[ ! "$INPUT" =~ \.exr$ ]]; then
-    echo "Error: Input file must have .exr extension"
-    exit 1
-fi
+convert_file() {
+    local INPUT="$1"
+    [[ ! -f "$INPUT" ]] && echo "Missing: $INPUT" && return 1
+    [[ ! "$INPUT" =~ \.exr$ ]] && echo "Skip: $INPUT" && return 0
 
-# Output file (replace .exr with .jpg)
-OUTPUT="${INPUT%.exr}.jpg"
+    local OUT="${INPUT%.exr}.jpg"
 
-# Perform the conversion
-oiiotool "$INPUT" --colorconvert "role_scene_linear" "out_srgb" -o "$OUTPUT"
+    if [ $USE_FOLDER -eq 1 ]; then
+        OUT="jpg/$(basename "$OUT")"
+    fi
 
-# Check if conversion was successful
-if [ $? -eq 0 ]; then
-    echo "Successfully converted '$INPUT' to '$OUTPUT'"
-else
-    echo "Error: Conversion failed"
-    exit 1
-fi
+    oiiotool "$INPUT" --colorconvert "role_scene_linear" "out_srgb" -o "$OUT"
+    [[ $? -eq 0 ]] && echo "$INPUT → $OUT" || echo "Error on $INPUT"
+}
+
+EXIT=0
+for f in "$@"; do
+    convert_file "$f" || EXIT=1
+done
+
+exit $EXIT
+

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Converts EXR → TIFF using oiiotool
+# Converts EXR → PNG using oiiotool
 # Usage:
-#   ./convert_exr_to_tiff.sh
-#   ./convert_exr_to_tiff.sh file.exr
-#   ./convert_exr_to_tiff.sh *.exr
-#   ./convert_exr_to_tiff.sh -folder  (outputs into ./tiff/)
+#   ./convert_exr_to_png.sh
+#   ./convert_exr_to_png.sh file.exr
+#   ./convert_exr_to_png.sh *.exr
+#   ./convert_exr_to_png.sh -folder   (outputs into ./png/)
 
 shopt -s nullglob
 
@@ -27,19 +27,19 @@ else
     FILES=("$@")
 fi
 
-# Make folder if requested
+# Make output folder if requested
 if [ $USE_FOLDER -eq 1 ]; then
-    mkdir -p tiff
+    mkdir -p png
 fi
 
+# Convert
 for INPUT in "${FILES[@]}"; do
     [[ ! -f "$INPUT" ]] && echo "Skipping '$INPUT' (not a file)" && continue
-    [[ ! "$INPUT" =~ \.exr$ ]] && echo "Skipping '$INPUT' (not .exr)" && continue
+    [[ ! "$INPUT" =~ \.exr$ ]] && echo "Skipping '$INPUT' (not an .exr file)" && continue
 
-    OUTPUT="${INPUT%.exr}.tiff"
-
+    OUTPUT="${INPUT%.exr}.png"
     if [ $USE_FOLDER -eq 1 ]; then
-        OUTPUT="tiff/$(basename "$OUTPUT")"
+        OUTPUT="png/$(basename "$OUTPUT")"
     fi
 
     echo "Converting '$INPUT' → '$OUTPUT' ..."
